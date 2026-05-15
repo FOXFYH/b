@@ -2302,9 +2302,12 @@ svgEl.addEventListener('touchmove',function(e){
     const dist=touchDist(t1,t2);
     const scale=dist/pinchStartDist;
     const newZoom=Math.max(0.1,Math.min(3,pinchStartZoom*scale));
-    const cx=pinchCenterX,cy=pinchCenterY;
-    panX=cx-(cx-panX)*(newZoom/pinchStartZoom);
-    panY=cy-(cy-panY)*(newZoom/pinchStartZoom);
+    const cx=(t1.clientX+t2.clientX)/2;
+    const cy=(t1.clientY+t2.clientY)/2;
+    const worldX=(cx-panX)/zoom;
+    const worldY=(cy-panY)/zoom;
+    panX=cx-worldX*newZoom;
+    panY=cy-worldY*newZoom;
     zoom=newZoom;
     updateTransform();
     return;
