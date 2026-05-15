@@ -15,10 +15,13 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 #toolbar button.danger{color:#e74c3c}
 #toolbar button.danger:hover{background:#fde8e8;border-color:#e74c3c}
 #toolbar .clip-info{font-size:10px;color:#999;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#zoom-panel{position:fixed;left:8px;top:50%;transform:translateY(-50%);background:#fff;border:1px solid #ddd;border-radius:8px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+#zoom-panel{position:fixed;left:8px;top:50%;transform:translateY(-50%);background:#fff;border:1px solid #ddd;border-radius:8px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:all .25s}
+#zoom-panel.collapsed{top:42px;transform:none;padding:4px;background:transparent;border:none;box-shadow:none;gap:0}
+#zoom-panel.collapsed .zoom-panel-inner{display:none}
 #zoom-panel button{width:32px;height:32px;border:1px solid #ccc;border-radius:5px;background:#fff;cursor:pointer;font-size:15px;font-family:inherit;transition:all .15s;display:flex;align-items:center;justify-content:center;padding:0}
 #zoom-panel button:hover{background:#e8f0fe;border-color:#4A90D9}
 #zoom-panel button:active{background:#d0e0f8}
+#zoom-panel .toggle-btn{width:28px;height:28px;font-size:13px;border-radius:50%;display:flex}
 #zoom-panel .zoom-info{font-size:10px;color:#666;text-align:center;line-height:1.2;padding:2px 0;min-width:32px}
 #zoom-panel .zoom-sep{width:24px;height:1px;background:#ddd;margin:2px 0}
 .dropdown{position:relative;display:inline-block}
@@ -108,12 +111,15 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   <input type="file" id="fileInput" accept=".txt" style="display:none" onchange="handleFile(event)">
 </div>
 <div id="zoom-panel">
-  <button onclick="zoomIn()" title="放大 (+)">＋</button>
-  <div class="zoom-info" id="zoomInfo">100%</div>
-  <button onclick="zoomOut()" title="缩小 (−)">−</button>
-  <div class="zoom-sep"></div>
-  <button onclick="handleFitClick()" title="切换：适应全局 / 100%居中根标签">⊞</button>
-  <button onclick="toggleFullscreen()" title="全屏 (F11)">⛶</button>
+  <button class="toggle-btn" onclick="toggleZoomPanel()" title="展开/收起">⚙</button>
+  <div class="zoom-panel-inner">
+    <button onclick="zoomIn()" title="放大 (+)">＋</button>
+    <div class="zoom-info" id="zoomInfo">100%</div>
+    <button onclick="zoomOut()" title="缩小 (−)">−</button>
+    <div class="zoom-sep"></div>
+    <button onclick="handleFitClick()" title="切换：适应全局 / 100%居中根标签">⊞</button>
+    <button onclick="toggleFullscreen()" title="全屏 (F11)">⛶</button>
+  </div>
 </div>
 <div id="viewport">
   <svg id="canvas">
@@ -149,29 +155,47 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   </div>
 </div>
 <div id="sync-modal">
-  <div class="modal-box" style="width:400px">
-    <h3>☁️ 云同步设置</h3>
-    <label style="margin-top:8px">云函数地址（免令牌优先）</label>
-    <input id="syncApiUrl" type="text" placeholder="https://..." style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;margin-top:4px">
-    <label style="margin-top:10px">Webhook 地址（金山文档）</label>
-    <input id="syncWebhookUrl" type="text" placeholder="https://www.kdocs.cn/api/v3/ide/file/..." style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;margin-top:4px">
-    <label style="margin-top:10px">AirScript Token（直接发送模式需要）</label>
-    <input id="syncToken" type="text" placeholder="可选" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;margin-top:4px">
-    <label style="margin-top:10px">自动保存间隔（秒，低于此间隔不许发起保存）</label>
-    <input id="syncAutoSaveInterval" type="number" value="5" min="1" max="60" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;margin-top:4px">
-    <label style="margin-top:10px">云端检查间隔（分钟）</label>
-    <input id="syncCloudCheckInterval" type="number" value="5" min="1" max="60" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;margin-top:4px">
-    <label style="margin-top:10px">同步差值（本地版本领先此值才自动上传）</label>
-    <input id="syncThreshold" type="number" value="5" min="1" max="20" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;margin-top:4px">
-    <label style="margin-top:10px">重试次数（每个地址）</label>
-    <input id="syncRetryCount" type="number" value="5" min="1" max="10" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;margin-top:4px">
-    <label style="margin-top:10px">重试间隔（秒）</label>
-    <input id="syncRetryInterval" type="number" value="2" min="1" max="10" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;margin-top:4px">
-    <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
-      <input id="syncEnabled" type="checkbox" checked>
-      <label for="syncEnabled" style="margin:0">启用云同步</label>
+  <div class="modal-box" style="width:400px;padding:14px 18px">
+    <h3 style="font-size:15px;margin-bottom:10px">☁️ 云同步设置</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px">
+      <div style="grid-column:1/-1">
+        <label style="font-size:12px;margin-top:0">云函数地址</label>
+        <input id="syncApiUrl" type="text" placeholder="https://..." style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px">
+      </div>
+      <div style="grid-column:1/-1">
+        <label style="font-size:12px;margin-top:0">Webhook 地址</label>
+        <input id="syncWebhookUrl" type="text" placeholder="https://www.kdocs.cn/api/v3/ide/file/..." style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px">
+      </div>
+      <div style="grid-column:1/-1">
+        <label style="font-size:12px;margin-top:0">AirScript Token</label>
+        <input id="syncToken" type="text" placeholder="可选" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px">
+      </div>
+      <div>
+        <label style="font-size:12px;margin-top:0">保存间隔(秒)</label>
+        <input id="syncAutoSaveInterval" type="number" value="5" min="1" max="60" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px">
+      </div>
+      <div>
+        <label style="font-size:12px;margin-top:0">检查间隔(分)</label>
+        <input id="syncCloudCheckInterval" type="number" value="5" min="1" max="60" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px">
+      </div>
+      <div>
+        <label style="font-size:12px;margin-top:0">同步差值</label>
+        <input id="syncThreshold" type="number" value="5" min="1" max="20" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px">
+      </div>
+      <div>
+        <label style="font-size:12px;margin-top:0">重试次数</label>
+        <input id="syncRetryCount" type="number" value="5" min="1" max="10" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px">
+      </div>
+      <div>
+        <label style="font-size:12px;margin-top:0">重试间隔(秒)</label>
+        <input id="syncRetryInterval" type="number" value="2" min="1" max="10" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;grid-column:1/-1;margin-top:2px">
+        <input id="syncEnabled" type="checkbox" checked>
+        <label for="syncEnabled" style="margin:0;font-size:12px">启用云同步</label>
+      </div>
     </div>
-    <div class="modal-btns">
+    <div class="modal-btns" style="margin-top:10px">
       <button onclick="closeSyncSettings()">取消</button>
       <button class="primary" onclick="saveSyncSettings()">保存</button>
     </div>
@@ -1332,6 +1356,16 @@ function zoomIn(){zoom=Math.min(zoom*1.2,5);render()}
 function zoomOut(){zoom=Math.max(zoom/1.2,0.05);render()}
 
 let isFullscreen=false;
+let isZoomPanelCollapsed=true;
+function toggleZoomPanel(){
+  const panel=document.getElementById('zoom-panel');
+  isZoomPanelCollapsed=!isZoomPanelCollapsed;
+  panel.classList.toggle('collapsed',isZoomPanelCollapsed);
+}
+(function initZoomPanel(){
+  const panel=document.getElementById('zoom-panel');
+  if(panel)panel.classList.add('collapsed');
+})();
 function toggleFullscreen(){
   if(!document.fullscreenElement){
     document.documentElement.requestFullscreen().then(()=>{isFullscreen=true}).catch(()=>{});
@@ -1712,7 +1746,11 @@ document.getElementById('fileList').addEventListener('click',function(e){
   const del=e.target.closest('[data-del]');
   if(del){e.stopPropagation();deleteNamedFile(decodeURIComponent(del.getAttribute('data-del')));return}
   const item=e.target.closest('[data-name]');
-  if(item)openNamedFile(decodeURIComponent(item.getAttribute('data-name')));
+  if(item){
+    const name=decodeURIComponent(item.getAttribute('data-name'));
+    document.getElementById('fileNameInput').value=name;
+    openNamedFile(name);
+  }
 });
 function openFileManagerFrame(){
   const modal = document.getElementById('file-modal');
