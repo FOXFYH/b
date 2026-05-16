@@ -300,6 +300,7 @@ let clickPendingNode=null;
 let editingNodeId=null;
 let clipboard=null;
 let clipboardMode='';
+let clipboardSourceNode=null;
 let usedBranchColors=new Set();
 
 let undoStack=[];
@@ -1217,6 +1218,7 @@ function render(){
   if(isRendering)return;
   if(document.getElementById('inline-editor').style.display==='block')finishInlineEdit();
   hideNodeQuickMenu();
+  hideContextMenu();
   isRendering=true;
   const world=document.getElementById('world');
   world.innerHTML='';
@@ -1588,10 +1590,9 @@ function cutNode(){
   pushHistory();
   clipboard=cloneSubtree(selectedNode);
   clipboardMode='cut';
-  const p=selectedNode.parent;
-  p.removeChild(selectedNode);selectedNode=p;
+  clipboardSourceNode=selectedNode;
   rebuildMap();render();updateClipInfo();
-  toast('已剪切：'+clipboard.firstLine()+' (+'+clipboard.countDescendants()+')');
+  toast('已剪切：'+clipboard.firstLine()+' (+'+clipboard.countDescendants()+')，粘贴后消失');
 }
 
 function copyNode(){
@@ -1635,6 +1636,13 @@ function pasteNode(){
   if(!clipboard){toast('剪贴板为空');return}
   if(!selectedNode){toast('请先选择目标节点');return}
   pushHistory();
+  if(clipboardMode==='cut'&&clipboardSourceNode&&clipboardSourceNode.parent){
+    if(clipboardSourceNode===selectedNode||selectedNode.isDescendantOf(clipboardSourceNode)){
+      toast('不能粘贴到自身或子节点');return;
+    }
+    clipboardSourceNode.parent.removeChild(clipboardSourceNode);
+    clipboardSourceNode=null;
+  }
   const pasted=cloneSubtree(clipboard);
   selectedNode.addChild(pasted);
   if(selectedNode.collapsed)selectedNode.collapsed=false;
@@ -2120,6 +2128,7 @@ const svgEl=document.getElementById('canvas');
 svgEl.addEventListener('mousedown',function(e){
   if(e.button===2)return;
   hideNodeQuickMenu();
+  hideContextMenu();
   if(document.getElementById('inline-editor').style.display==='block'){
     finishInlineEdit();
     return;
@@ -2244,6 +2253,7 @@ svgEl.addEventListener('mousemove',function(e){
       if(!isPanning&&!isDragging&&clickPendingNode){
         isPanning=true;
         hideNodeQuickMenu();
+        hideContextMenu();
         viewport.classList.add('grabbing');
         viewport.classList.add('no-select');
       }
@@ -2435,6 +2445,7 @@ svgEl.addEventListener('touchstart',function(e){
     e.preventDefault();
     clearTimeout(longPressTimer);
     hideNodeQuickMenu();
+    hideContextMenu();
     if(document.getElementById('inline-editor').style.display==='block')finishInlineEdit();
     const t1=e.touches[0],t2=e.touches[1];
     pinchStartDist=touchDist(t1,t2);
@@ -2464,6 +2475,7 @@ svgEl.addEventListener('touchstart',function(e){
     panStartPanX=panX;panStartPanY=panY;
   }else{
     hideNodeQuickMenu();
+    hideContextMenu();
     if(document.getElementById('inline-editor').style.display==='block')finishInlineEdit();
     isPanning=true;panStartX=touch.clientX;panStartY=touch.clientY;
     panStartPanX=panX;panStartPanY=panY;viewport.classList.add('no-select');
@@ -2495,6 +2507,7 @@ svgEl.addEventListener('touchmove',function(e){
     if(!isPanning&&!isDragging&&touchStartNode){
       isPanning=true;
       hideNodeQuickMenu();
+      hideContextMenu();
       viewport.classList.add('no-select');
     }
   }
