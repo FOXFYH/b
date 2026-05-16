@@ -2455,8 +2455,10 @@ svgEl.addEventListener('touchstart',function(e){
     return;
   }
   if(e.touches.length!==1)return;
-  e.preventDefault();
   const touch=e.touches[0];
+  const tapTarget=document.elementFromPoint(touch.clientX,touch.clientY);
+  if(tapTarget&&tapTarget.closest('[data-collapse]'))return;
+  e.preventDefault();
   const fakeE={clientX:touch.clientX,clientY:touch.clientY,button:0};
   const pt=svgPoint(fakeE);
   const node=findNodeAt(pt.x,pt.y);
