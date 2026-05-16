@@ -88,7 +88,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 #node-quick-menu .qm-more{font-weight:bold;font-size:15px;color:#4A90D9;border-left:1px solid #e0e0e0;margin-left:2px;padding-left:6px}
 #node-quick-menu .qm-danger{color:#e74c3c}
 #node-quick-menu .qm-danger:hover{background:#fef0ef;color:#c0392b}
-#inline-editor textarea{font-family:'Microsoft YaHei','PingFang SC',sans-serif;border:none;outline:none;resize:none;background:#e8e8e8;box-shadow:0 0 0 1px rgba(74,144,217,.25);overflow:hidden;color:#333;word-break:break-all;white-space:pre-wrap}
+#inline-editor textarea{font-family:'Microsoft YaHei','PingFang SC',sans-serif;border:none;outline:none;resize:none;background:#e8e8e8;box-shadow:0 0 0 1px rgba(74,144,217,.25);overflow:hidden;color:#333;white-space:pre;min-width:40px;min-height:20px}
 </style>
 </head>
 <body>
@@ -261,16 +261,14 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   <div class="menu-item" onclick="addChild()">➕ 添加子级</div>
   <div class="menu-item" onclick="editNodeModal()">✏️ 编辑(弹窗)</div>
   <div class="menu-sep"></div>
-  <div class="menu-item" onclick="cutNode()">✂️ 剪切</div>
-  <div class="menu-item" onclick="copyNode()">📋 复制</div>
+  <div class="menu-item" onclick="moveNodeUp()">⬆ 上移</div>
+  <div class="menu-item" onclick="moveNodeDown()">⬇ 下移</div>
+  <div class="menu-sep"></div>
   <div class="menu-item" onclick="copyAsStructuredText()">📝 复制为结构文本</div>
-  <div class="menu-item" onclick="pasteNode()">📌 粘贴</div>
   <div class="menu-sep"></div>
   <div id="color-picker-row" class="color-picker-row" style="display:none"></div>
   <div class="menu-sep" id="color-sep" style="display:none;"></div>
   <div class="menu-item" onclick="toggleCollapse()">🔄 折叠/展开</div>
-  <div class="menu-sep"></div>
-  <div class="menu-item danger" onclick="deleteNode()">🗑️ 删除</div>
 </div>
 <div id="toast"></div>
 <script>
@@ -881,13 +879,50 @@ async function checkCloudVersion() {
   }
 }
 
-async function syncToCloud() {
+async function syncToCloud(){
+  const config=getSyncConfig();
+  if(!config.enabled){toast('云同步未启用');return}
   updateSyncButton('🔄');
-  const result = await uploadToCloud();
-  if (result.status === 'success') {
-    toast('同步成功，版本: ' + result.version);
-  } else if (result.status !== 'conflict') {
-    toast('同步失败: ' + result.message);
+  const fileName=currentFileName||'未命名.txt';
+  const content=exportNodeText(root).trimEnd();
+  const localVer=getLocalVersion();
+  try{
+    const existingFile=await findFileInCloud(fileName);
+    if(!existingFile){
+      const newRow=await findFirstEmptyRow();
+      const newVersion=localVer+1;
+      await callCloudAPI('批量写入',{
+        行号:newRow,
+        数据:{文件名:fileName,内容:content,版本号:newVersion.toString(),更新时间:new Date().toISOString()}
+      });
+      setLocalVersion(newVersion);
+      lastContentHash=getContentHash();
+      updateSyncButton('✅');
+      setTimeout(()=>updateSyncButton('☁️'),2000);
+      toast('已新建云端文件，版本: '+newVersion);
+      return;
+    }
+    const cloudVer=parseInt(existingFile.版本号||'0');
+    if(cloudVer>localVer){
+      pendingCloudVersion=cloudVer;
+      showSyncConflict(cloudVer);
+      updateSyncButton('☁️');
+      return;
+    }
+    const newVersion=Math.max(localVer,cloudVer)+1;
+    await callCloudAPI('批量写入',{
+      行号:existingFile._行号,
+      数据:{文件名:fileName,内容:content,版本号:newVersion.toString(),更新时间:new Date().toISOString()}
+    });
+    setLocalVersion(newVersion);
+    lastContentHash=getContentHash();
+    updateSyncButton('✅');
+    setTimeout(()=>updateSyncButton('☁️'),2000);
+    toast('同步成功，版本: '+newVersion);
+  }catch(error){
+    updateSyncButton('❌');
+    setTimeout(()=>updateSyncButton('☁️'),2000);
+    toast('同步失败: '+error.message);
   }
 }
 
@@ -1218,7 +1253,6 @@ function render(){
   if(isRendering)return;
   if(document.getElementById('inline-editor').style.display==='block')finishInlineEdit();
   hideNodeQuickMenu();
-  hideContextMenu();
   isRendering=true;
   const world=document.getElementById('world');
   world.innerHTML='';
@@ -1481,11 +1515,13 @@ function startInlineEdit(node,skipHistory,cursorOffset){
   container.style.display='block';
   container.style.left=screenX+'px';
   container.style.top=screenY+'px';
+  ta.style.minWidth=screenW+'px';
+  ta.style.minHeight=screenH+'px';
   ta.style.width=screenW+'px';
   ta.style.height=screenH+'px';
   const taFontSize=Math.round(DESC_FONT_SIZE*zoom*10)/10;
   ta.style.fontSize=taFontSize+'px';
-  ta.style.lineHeight=(LINE_HEIGHT/FONT_SIZE).toString();
+  ta.style.lineHeight=(DESC_LINE_HEIGHT*zoom/taFontSize).toString();
   ta.style.fontWeight='normal';
   ta.style.color='#333';
   ta.style.borderLeft=(4*zoom)+'px solid '+getColor(node);
@@ -1505,10 +1541,29 @@ function startInlineEdit(node,skipHistory,cursorOffset){
   autoResizeInline(ta);
 }
 
+let _measureCanvas=null;
 function autoResizeInline(ta){
-  if(ta.scrollHeight>parseFloat(ta.style.height)){
-    ta.style.height=ta.scrollHeight+'px';
+  const fontSize=parseFloat(ta.style.fontSize)||12;
+  const lineHeight=parseFloat(ta.style.lineHeight)||1.2;
+  const lineH=fontSize*lineHeight;
+  const padL=parseFloat(ta.style.paddingLeft)||0;
+  const padR=parseFloat(ta.style.paddingRight)||0;
+  const padT=parseFloat(ta.style.paddingTop)||0;
+  const padB=parseFloat(ta.style.paddingBottom)||0;
+  const borderL=parseFloat(ta.style.borderLeft)||0;
+  if(!_measureCanvas){_measureCanvas=document.createElement('canvas')}
+  const ctx=_measureCanvas.getContext('2d');
+  ctx.font=fontSize+'px Microsoft YaHei,PingFang SC,sans-serif';
+  const lines=ta.value.split('\n');
+  let maxW=0;
+  for(const line of lines){
+    const w=ctx.measureText(line||' ').width;
+    if(w>maxW)maxW=w;
   }
+  const newW=Math.max(parseFloat(ta.style.minWidth)||40,Math.ceil(maxW+padL+padR+borderL+4));
+  const newH=Math.max(parseFloat(ta.style.minHeight)||20,Math.ceil(lines.length*lineH+padT+padB+4));
+  ta.style.width=newW+'px';
+  ta.style.height=newH+'px';
 }
 
 function finishInlineEdit(){
@@ -1584,6 +1639,28 @@ function cloneSubtree(node){
   return n;
 }
 
+function moveNodeUp(){
+  if(!selectedNode||!selectedNode.parent){toast('无法移动');return}
+  const siblings=selectedNode.parent.children;
+  const idx=siblings.indexOf(selectedNode);
+  if(idx<=0){toast('已在最前');return}
+  pushHistory();
+  siblings.splice(idx,1);
+  siblings.splice(idx-1,0,selectedNode);
+  rebuildMap();render();centerOnNode(selectedNode);
+}
+
+function moveNodeDown(){
+  if(!selectedNode||!selectedNode.parent){toast('无法移动');return}
+  const siblings=selectedNode.parent.children;
+  const idx=siblings.indexOf(selectedNode);
+  if(idx>=siblings.length-1){toast('已在最后');return}
+  pushHistory();
+  siblings.splice(idx,1);
+  siblings.splice(idx+1,0,selectedNode);
+  rebuildMap();render();centerOnNode(selectedNode);
+}
+
 function cutNode(){
   if(!selectedNode){toast('请先选择节点');return}
   if(!selectedNode.parent){toast('不能剪切根节点');return}
@@ -1591,6 +1668,10 @@ function cutNode(){
   clipboard=cloneSubtree(selectedNode);
   clipboardMode='cut';
   clipboardSourceNode=selectedNode;
+  try{
+    const data=JSON.stringify({type:'mindmap-clipboard',mode:'cut',text:selectedNode.text,children:selectedNode.children.map(c=>serializeNode(c))});
+    navigator.clipboard.writeText(data).catch(()=>{});
+  }catch(e){}
   rebuildMap();render();updateClipInfo();
   toast('已剪切：'+clipboard.firstLine()+' (+'+clipboard.countDescendants()+')，粘贴后消失');
 }
@@ -1599,7 +1680,22 @@ function copyNode(){
   if(!selectedNode){toast('请先选择节点');return}
   clipboard=cloneSubtree(selectedNode);
   clipboardMode='copy';updateClipInfo();
+  try{
+    const data=JSON.stringify({type:'mindmap-clipboard',text:selectedNode.text,children:selectedNode.children.map(c=>serializeNode(c))});
+    navigator.clipboard.writeText(data).catch(()=>{});
+  }catch(e){}
   toast('已复制：'+clipboard.firstLine()+' (+'+clipboard.countDescendants()+')');
+}
+
+function serializeNode(node){
+  return{text:node.text,collapsed:node.collapsed,children:node.children.map(c=>serializeNode(c))};
+}
+
+function deserializeNode(data){
+  const n=new MindNode(data.text);
+  n.collapsed=!!data.collapsed;
+  if(data.children)for(const c of data.children)n.addChild(deserializeNode(c));
+  return n;
 }
 
 function exportNodeTextClean(node,indent=0){
@@ -1629,12 +1725,28 @@ function copyAsStructuredText(){
     document.body.removeChild(ta);
     toast('已复制结构文本：'+selectedNode.firstLine());
   });
-  hideContextMenu();
 }
 
 function pasteNode(){
-  if(!clipboard){toast('剪贴板为空');return}
   if(!selectedNode){toast('请先选择目标节点');return}
+  if(!clipboard){
+    try{
+      navigator.clipboard.readText().then(text=>{
+        const data=JSON.parse(text);
+        if(data.type==='mindmap-clipboard'){
+          clipboard=deserializeNode(data);
+          clipboardMode=data.mode==='cut'?'cut':'copy';
+          doPaste();
+        }else{toast('剪贴板内容不是思维导图数据')}
+      }).catch(()=>{toast('剪贴板为空')});
+    }catch(e){toast('剪贴板为空')}
+    return;
+  }
+  doPaste();
+}
+
+function doPaste(){
+  if(!clipboard||!selectedNode)return;
   pushHistory();
   if(clipboardMode==='cut'&&clipboardSourceNode&&clipboardSourceNode.parent){
     if(clipboardSourceNode===selectedNode||selectedNode.isDescendantOf(clipboardSourceNode)){
@@ -1646,7 +1758,7 @@ function pasteNode(){
   const pasted=cloneSubtree(clipboard);
   selectedNode.addChild(pasted);
   if(selectedNode.collapsed)selectedNode.collapsed=false;
-  rebuildMap();render();selectNode(pasted);
+  rebuildMap();render();selectNode(pasted);centerOnNode(pasted);
   toast('已粘贴：'+pasted.firstLine());
 }
 
@@ -2088,7 +2200,7 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
         const sw=document.createElement('div');
         sw.className='color-swatch'+(c===currentColor?' selected':'');
         sw.style.background=c;
-        sw.onclick=function(){pushHistory();setUserColor(selectedNode,c);rebuildMap();render();hideContextMenu()};
+        sw.onclick=function(){pushHistory();setUserColor(selectedNode,c);rebuildMap();render()};
         colorRow.appendChild(sw);
       }
     }else{colorRow.style.display='none';colorSep.style.display='none'}
@@ -2383,7 +2495,7 @@ svgEl.addEventListener('contextmenu',function(e){
         const sw=document.createElement('div');
         sw.className='color-swatch'+(c===currentColor?' selected':'');
         sw.style.background=c;
-        sw.onclick=function(){pushHistory();setUserColor(node,c);rebuildMap();render();hideContextMenu()};
+        sw.onclick=function(){pushHistory();setUserColor(node,c);rebuildMap();render()};
         colorRow.appendChild(sw);
       }
     } else {
