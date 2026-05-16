@@ -2,10 +2,16 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ffffff">
 <title>思维导图编辑器</title>
+<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoi5o6o5Y+R5bqP57yW566h55CG5ZmoIiwic2hvcnRfbmFtZSI6IuaOqOWPkea2pyIsInN0YXJ0X3VybCI6Ii4iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjZmZmZmZmIiwidGhlbWVfY29sb3IiOiIjZmZmZmZmIiwib3JpZW50YXRpb24iOiJhbnkifQ==">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
+html,body{overscroll-behavior-x:none}
 body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;background:#f5f5f5;height:100vh;display:flex;flex-direction:column}
 #toolbar{background:#fff;border-bottom:1px solid #e0e0e0;padding:4px 8px;display:flex;align-items:center;gap:4px;flex-wrap:nowrap;overflow-x:auto;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 #toolbar .sep{width:1px;height:20px;background:#ddd;margin:0 3px;flex-shrink:0}
@@ -39,7 +45,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 .file-item .file-del{font-size:12px;color:#e74c3c;cursor:pointer;margin-left:8px;padding:2px 6px;border-radius:3px}
 .file-item .file-del:hover{background:#fef0ef}
 .file-item.active{background:#e8f0fe;border:1px solid #4A90D9}
-#viewport{flex:1;position:relative;overflow:hidden;cursor:grab}
+#viewport{flex:1;position:relative;overflow:hidden;cursor:grab;touch-action:none}
 #viewport.no-select{user-select:none;-webkit-user-select:none}
 #viewport.grabbing{cursor:grabbing}
 #viewport.dragging-node{cursor:move}
@@ -76,6 +82,10 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 .color-swatch.selected{border-color:#333}
 .color-picker-row{display:flex;flex-wrap:wrap;gap:4px;padding:6px 12px;justify-content:flex-start;width:calc(5*24px + 4*4px)}
 #inline-editor{position:absolute;display:none;z-index:110}
+#node-quick-menu{position:absolute;display:none;z-index:120;background:#fff;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,.15);padding:2px 4px;gap:2px;flex-direction:row;align-items:center;white-space:nowrap}
+#node-quick-menu .qm-item{padding:3px 8px;font-size:12px;cursor:pointer;border-radius:3px;color:#333;user-select:none;-webkit-user-select:none}
+#node-quick-menu .qm-item:hover{background:#e8f0fe;color:#4A90D9}
+#node-quick-menu .qm-more{font-weight:bold;font-size:15px;color:#4A90D9;border-left:1px solid #e0e0e0;margin-left:2px;padding-left:6px}
 #inline-editor textarea{font-family:'Microsoft YaHei','PingFang SC',sans-serif;border:none;outline:none;resize:none;background:#e8e8e8;box-shadow:0 0 0 1px rgba(74,144,217,.25);overflow:hidden;color:#333;word-break:break-all;white-space:pre-wrap}
 </style>
 </head>
@@ -131,6 +141,13 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
     <g id="world"></g>
   </svg>
   <div id="inline-editor"><textarea></textarea></div>
+  <div id="node-quick-menu">
+    <div class="qm-item" data-action="edit">编辑</div>
+    <div class="qm-item" data-action="cut">剪切</div>
+    <div class="qm-item" data-action="copy">复制</div>
+    <div class="qm-item" data-action="paste">粘贴</div>
+    <div class="qm-item qm-more" data-action="more">+</div>
+  </div>
 </div>
 <div id="edit-modal">
   <div class="modal-box">
@@ -254,6 +271,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 </div>
 <div id="toast"></div>
 <script>
+if('serviceWorker' in navigator){const swCode='self.addEventListener("fetch",function(e){e.respondWith(fetch(e.request))})';const swBlob=new Blob([swCode],{type:'application/javascript'});const swUrl=URL.createObjectURL(swBlob);navigator.serviceWorker.register(swUrl).catch(()=>{})}
 const SVG_NS='http://www.w3.org/2000/svg';
 const H_GAP=70,V_GAP=2,NODE_PAD_H=8,NODE_PAD_V=2;
 const FONT_SIZE=13,DESC_FONT_SIZE=12;
@@ -1193,6 +1211,7 @@ function indexNodes(node){nodeMap[node.id]=node;if(!node.collapsed)for(const c o
 
 function render(){
   if(document.getElementById('inline-editor').style.display==='block')finishInlineEdit();
+  hideNodeQuickMenu();
   const world=document.getElementById('world');
   world.innerHTML='';
   if(!root)return;
@@ -1484,6 +1503,7 @@ function autoResizeInline(ta){
 }
 
 function finishInlineEdit(){
+  hideNodeQuickMenu();
   const container=document.getElementById('inline-editor');
   const ta=container.querySelector('textarea');
   if(container.style.display==='block'&&inlineEditNode){
@@ -1995,6 +2015,77 @@ function renderDragGhost(node,container){
 
 function hideContextMenu(){document.getElementById('context-menu').style.display='none'}
 
+function showNodeQuickMenu(node){
+  hideNodeQuickMenu();
+  const menu=document.getElementById('node-quick-menu');
+  const vp=document.getElementById('viewport');
+  const vpRect=vp.getBoundingClientRect();
+  const nodeBg=document.querySelector('.mind-node[data-id="'+node.id+'"] .node-bg');
+  let screenX,screenY,screenW;
+  if(nodeBg){
+    const r=nodeBg.getBoundingClientRect();
+    screenX=r.left-vpRect.left;
+    screenY=r.top-vpRect.top;
+    screenW=r.width;
+  }else{
+    screenX=node.x*zoom+panX;
+    screenY=(node.y-node.height/2)*zoom+panY;
+    screenW=node.width*zoom;
+  }
+  menu.style.display='flex';
+  const menuW=menu.offsetWidth;
+  let left=screenX+screenW/2-menuW/2;
+  if(left<2)left=2;
+  if(left+menuW>vpRect.width-2)left=vpRect.width-menuW-2;
+  let top=screenY-menu.offsetHeight-2;
+  if(top<2)top=screenY+node.height*zoom+2;
+  menu.style.left=left+'px';
+  menu.style.top=top+'px';
+}
+
+function hideNodeQuickMenu(){document.getElementById('node-quick-menu').style.display='none'}
+
+document.getElementById('node-quick-menu').addEventListener('click',function(e){
+  const item=e.target.closest('.qm-item');
+  if(!item)return;
+  const action=item.getAttribute('data-action');
+  if(!selectedNode)return;
+  if(action==='more'){
+    hideNodeQuickMenu();
+    const menu=document.getElementById('context-menu');
+    const qmRect=document.getElementById('node-quick-menu').getBoundingClientRect();
+    menu.style.display='block';
+    const menuWidth=menu.offsetWidth||140;
+    const menuHeight=menu.offsetHeight||300;
+    let left=qmRect.left;
+    let top=qmRect.top-menuHeight-2;
+    if(top<5)top=qmRect.bottom+2;
+    if(left+menuWidth>window.innerWidth)left=window.innerWidth-menuWidth-10;
+    if(left<0)left=10;
+    menu.style.left=left+'px';
+    menu.style.top=top+'px';
+    const colorRow=document.getElementById('color-picker-row');
+    const colorSep=document.getElementById('color-sep');
+    if(getLevel(selectedNode)>=1){
+      colorRow.style.display='flex';colorSep.style.display='block';colorRow.innerHTML='';
+      const currentColor=getNodeBranchColor(selectedNode);
+      for(const c of BRANCH_COLORS){
+        const sw=document.createElement('div');
+        sw.className='color-swatch'+(c===currentColor?' selected':'');
+        sw.style.background=c;
+        sw.onclick=function(){pushHistory();setUserColor(selectedNode,c);rebuildMap();render();hideContextMenu()};
+        colorRow.appendChild(sw);
+      }
+    }else{colorRow.style.display='none';colorSep.style.display='none'}
+    return;
+  }
+  hideNodeQuickMenu();
+  if(action==='edit'){startInlineEdit(selectedNode)}
+  else if(action==='cut'){cutNode()}
+  else if(action==='copy'){copyNode()}
+  else if(action==='paste'){pasteNode()}
+});
+
 function toggleDropdown(){
   const m=document.getElementById('actionMenu');
   const btn=m.parentElement.querySelector('button');
@@ -2019,6 +2110,7 @@ const svgEl=document.getElementById('canvas');
 
 svgEl.addEventListener('mousedown',function(e){
   if(e.button===2)return;
+  hideNodeQuickMenu();
   if(document.getElementById('inline-editor').style.display==='block'){
     finishInlineEdit();
     return;
@@ -2150,6 +2242,7 @@ svgEl.addEventListener('mousemove',function(e){
 
 svgEl.addEventListener('mouseup',function(e){
   clearTimeout(longPressTimer);longPressTimer=null;
+  const wasDrag=isDragging||isPanning;
   if(isResizing&&resizeNode){
     isResizing=false;resizeNode=null;
     viewport.classList.remove('no-select');
@@ -2184,11 +2277,12 @@ svgEl.addEventListener('mouseup',function(e){
   }
   clickPendingNode=null;
   if(isPanning){isPanning=false;viewport.classList.remove('grabbing');viewport.classList.remove('no-select')}
+  if(selectedNode&&!wasDrag)showNodeQuickMenu(selectedNode);
 });
 
 svgEl.addEventListener('dblclick',function(e){
   clearTimeout(longPressTimer);longPressTimer=null;
-  clickPendingNode=null;
+  clickPendingNode=null;hideNodeQuickMenu();
   if(isDragging){isDragging=false;dragNode=null;dropTarget=null;viewport.classList.remove('dragging-node');viewport.classList.remove('no-select')}
   const pt=svgPoint(e);
   const node=findNodeAt(pt.x,pt.y);
@@ -2240,6 +2334,7 @@ svgEl.addEventListener('click',function(e){
 
 svgEl.addEventListener('contextmenu',function(e){
   e.preventDefault();
+  if('ontouchstart' in window||navigator.maxTouchPoints>0)return;
   const pt=svgPoint(e);
   const node=findNodeAt(pt.x,pt.y);
   if(node){
@@ -2337,6 +2432,7 @@ svgEl.addEventListener('touchstart',function(e){
     return;
   }
   if(e.touches.length!==1)return;
+  e.preventDefault();
   const touch=e.touches[0];
   const fakeE={clientX:touch.clientX,clientY:touch.clientY,button:0};
   const pt=svgPoint(fakeE);
@@ -2474,10 +2570,12 @@ svgEl.addEventListener('touchend',function(e){
     selectNode(touchStartNode);
     const now=Date.now();
     if(lastTapNode===touchStartNode&&now-lastTapTime<400){
+      hideNodeQuickMenu();
       startInlineEdit(touchStartNode);
       lastTapTime=0;lastTapNode=null;
     }else{
       lastTapTime=now;lastTapNode=touchStartNode;
+      showNodeQuickMenu(touchStartNode);
     }
   }
   touchStartNode=null;
