@@ -1212,16 +1212,20 @@ function rebuildMap(){
 }
 function indexNodes(node){nodeMap[node.id]=node;if(!node.collapsed)for(const c of node.children)indexNodes(c)}
 
+let isRendering=false;
 function render(){
+  if(isRendering)return;
   if(document.getElementById('inline-editor').style.display==='block')finishInlineEdit();
   hideNodeQuickMenu();
+  isRendering=true;
   const world=document.getElementById('world');
   world.innerHTML='';
-  if(!root)return;
+  if(!root){isRendering=false;return}
   renderConns(root,world);
   renderNodes(root,world);
   updateTransform();
   scheduleAutoSave();
+  isRendering=false;
 }
 
 function renderConns(node,container){
@@ -2080,6 +2084,7 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
         colorRow.appendChild(sw);
       }
     }else{colorRow.style.display='none';colorSep.style.display='none'}
+    e.stopPropagation();
     return;
   }
   hideNodeQuickMenu();
@@ -2451,6 +2456,7 @@ svgEl.addEventListener('touchstart',function(e){
       longPressTimer=null;
       if(node.parent){
         isPanning=false;
+        selectNode(node);
         isDragging=true;dragNode=node;viewport.classList.add('no-select');toast('拖拽中：释放到目标节点以移动');
       }
     },500);
@@ -2482,6 +2488,7 @@ svgEl.addEventListener('touchmove',function(e){
     return;
   }
   if(e.touches.length!==1)return;
+  e.preventDefault();
   const touch=e.touches[0];touchMoved=true;
   if(longPressTimer){
     clearTimeout(longPressTimer);longPressTimer=null;
