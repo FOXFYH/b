@@ -43,7 +43,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 #viewport.no-select{user-select:none;-webkit-user-select:none}
 #viewport.grabbing{cursor:grabbing}
 #viewport.dragging-node{cursor:move}
-#canvas{width:100%;height:100%}
+#canvas{width:100%;height:100%;user-select:none;-webkit-user-select:none}
 .mind-node{cursor:pointer}
 .mind-node:hover .node-bg{filter:brightness(.97)}
 .mind-node.selected .node-bg{stroke:#4A90D9;stroke-width:2.5;filter:brightness(.97)}
@@ -457,7 +457,7 @@ async function callCloudAPI(action, params = {}) {
 async function findFirstEmptyRow(){
   const result=await callCloudAPI('读取全部');
   if(result.status!=='success'||!result.数据)return 2;
-  const rows=result.数据;
+  const rows=result.数据.sort((a,b)=>(a._行号||0)-(b._行号||0));
   for(const row of rows){
     if(row._行号>=2&&(!row.文件名||row.文件名.trim()===''))return row._行号;
   }
@@ -1428,7 +1428,7 @@ function editNode(){
 
 let inlineEditNode=null;
 let skipInlineHistory=false;
-function startInlineEdit(node,skipHistory){
+function startInlineEdit(node,skipHistory,cursorOffset){
     finishInlineEdit();
     inlineEditNode=node;
     skipInlineHistory=!!skipHistory;
@@ -1468,7 +1468,12 @@ function startInlineEdit(node,skipHistory){
   ta.style.paddingRight=(6*zoom)+'px';
   ta.value=node.text;
   ta.focus();
-  ta.select();
+  if(typeof cursorOffset==='number'&&cursorOffset>=0){
+    const pos=Math.min(cursorOffset,node.text.length);
+    ta.setSelectionRange(pos,pos);
+  }else{
+    ta.setSelectionRange(node.text.length,node.text.length);
+  }
   autoResizeInline(ta);
 }
 
@@ -2036,6 +2041,8 @@ svgEl.addEventListener('mousedown',function(e){
     selectNode(node);
     longPressTimer=setTimeout(()=>{
       if(node.parent){
+        isPanning=false;
+        viewport.classList.remove('grabbing');
         isDragging=true;dragNode=node;
         viewport.classList.add('dragging-node');
         viewport.classList.add('no-select');
@@ -2044,6 +2051,8 @@ svgEl.addEventListener('mousedown',function(e){
     },350);
     dragStartX=e.clientX;dragStartY=e.clientY;
     clickPendingNode=node;
+    panStartX=e.clientX;panStartY=e.clientY;
+    panStartPanX=panX;panStartPanY=panY;
   }else{
     isPanning=true;panStartX=e.clientX;panStartY=e.clientY;
     panStartPanX=panX;panStartPanY=panY;viewport.classList.add('grabbing');
@@ -2130,6 +2139,11 @@ svgEl.addEventListener('mousemove',function(e){
   if(longPressTimer){
     if(Math.abs(e.clientX-dragStartX)>5||Math.abs(e.clientY-dragStartY)>5){
       clearTimeout(longPressTimer);longPressTimer=null;
+      if(!isPanning&&clickPendingNode){
+        isPanning=true;
+        viewport.classList.add('grabbing');
+        viewport.classList.add('no-select');
+      }
     }
   }
 });
@@ -2168,14 +2182,6 @@ svgEl.addEventListener('mouseup',function(e){
     isDragging=false;dragNode=null;dropTarget=null;dropAction='child';
     viewport.classList.remove('dragging-node');viewport.classList.remove('no-select');render();return;
   }
-  if(clickPendingNode&&!isDragging){
-    const editNode=clickPendingNode;
-    clickPendingNode=null;
-    if(Math.abs(e.clientX-dragStartX)<=5&&Math.abs(e.clientY-dragStartY)<=5){
-      startInlineEdit(editNode);
-      return;
-    }
-  }
   clickPendingNode=null;
   if(isPanning){isPanning=false;viewport.classList.remove('grabbing');viewport.classList.remove('no-select')}
 });
@@ -2186,7 +2192,19 @@ svgEl.addEventListener('dblclick',function(e){
   if(isDragging){isDragging=false;dragNode=null;dropTarget=null;viewport.classList.remove('dragging-node');viewport.classList.remove('no-select')}
   const pt=svgPoint(e);
   const node=findNodeAt(pt.x,pt.y);
-  if(node){selectNode(node);if(!inlineEditNode||inlineEditNode!==node)startInlineEdit(node)}
+  if(node){
+    selectNode(node);
+    if(!inlineEditNode||inlineEditNode!==node){
+      const charWidth=DESC_FONT_SIZE*0.6;
+      const relX=pt.x-node.x-NODE_PAD_H-6;
+      const lineIdx=Math.max(0,Math.round((pt.y-(node.y-node.height/2)-NODE_PAD_V)/(LINE_HEIGHT*1.1)));
+      const lines=node.text.split('\n');
+      let offset=0;
+      for(let i=0;i<lineIdx&&i<lines.length;i++)offset+=lines[i].length+1;
+      if(lineIdx<lines.length)offset+=Math.min(Math.round(Math.max(0,relX)/charWidth),lines[lineIdx].length);
+      startInlineEdit(node,false,offset);
+    }
+  }
 });
 
 svgEl.addEventListener('wheel',function(e){
@@ -2303,12 +2321,14 @@ document.getElementById('importText').addEventListener('keydown',function(e){
 });
 
 let touchStartTime=0,touchStartNode=null,touchMoved=false;
+let lastTapTime=0,lastTapNode=null;
 let pinchStartDist=0,pinchStartZoom=0,pinchCenterX=0,pinchCenterY=0;
 function touchDist(t1,t2){return Math.hypot(t2.clientX-t1.clientX,t2.clientY-t1.clientY)}
 svgEl.addEventListener('touchstart',function(e){
   if(e.touches.length===2){
     e.preventDefault();
     clearTimeout(longPressTimer);
+    if(document.getElementById('inline-editor').style.display==='block')finishInlineEdit();
     const t1=e.touches[0],t2=e.touches[1];
     pinchStartDist=touchDist(t1,t2);
     pinchStartZoom=zoom;
@@ -2325,9 +2345,15 @@ svgEl.addEventListener('touchstart',function(e){
   if(node){
     touchStartNode=node;
     longPressTimer=setTimeout(()=>{
-      if(node.parent){isDragging=true;dragNode=node;viewport.classList.add('no-select');toast('拖拽中')}
+      if(node.parent){
+        isPanning=false;
+        isDragging=true;dragNode=node;viewport.classList.add('no-select');toast('拖拽中：释放到目标节点以移动');
+      }
     },500);
+    panStartX=touch.clientX;panStartY=touch.clientY;
+    panStartPanX=panX;panStartPanY=panY;
   }else{
+    if(document.getElementById('inline-editor').style.display==='block')finishInlineEdit();
     isPanning=true;panStartX=touch.clientX;panStartY=touch.clientY;
     panStartPanX=panX;panStartPanY=panY;viewport.classList.add('no-select');
   }
@@ -2351,7 +2377,14 @@ svgEl.addEventListener('touchmove',function(e){
     return;
   }
   if(e.touches.length!==1)return;
-  const touch=e.touches[0];touchMoved=true;clearTimeout(longPressTimer);
+  const touch=e.touches[0];touchMoved=true;
+  if(longPressTimer){
+    clearTimeout(longPressTimer);longPressTimer=null;
+    if(!isPanning&&touchStartNode){
+      isPanning=true;
+      viewport.classList.add('no-select');
+    }
+  }
   if(isPanning){
     panX=panStartPanX+(touch.clientX-panStartX);
     panY=panStartPanY+(touch.clientY-panStartY);
@@ -2369,6 +2402,42 @@ svgEl.addEventListener('touchmove',function(e){
       else dropAction='child';
     }else{dropTarget=null;dropAction='child'}
     render();
+    const world=document.getElementById('world');
+    if(dropTarget){
+      if(dropAction==='child'){
+        const hl=document.createElementNS(SVG_NS,'rect');
+        hl.setAttribute('class','drop-highlight');
+        hl.setAttribute('x',dropTarget.x-3);hl.setAttribute('y',dropTarget.y-dropTarget.height/2-3);
+        hl.setAttribute('width',dropTarget.width+6);hl.setAttribute('height',dropTarget.height+6);
+        hl.setAttribute('rx','8');hl.setAttribute('fill','none');
+        hl.setAttribute('stroke','#50C878');hl.setAttribute('stroke-width','3');
+        hl.setAttribute('stroke-dasharray','6 3');
+        world.appendChild(hl);
+      }else{
+        const lineY=dropAction==='before'?dropTarget.y-dropTarget.height/2-2:dropTarget.y+dropTarget.height/2+2;
+        const line=document.createElementNS(SVG_NS,'line');
+        line.setAttribute('x1',dropTarget.x-8);line.setAttribute('y1',lineY);
+        line.setAttribute('x2',dropTarget.x+dropTarget.width+8);line.setAttribute('y2',lineY);
+        line.setAttribute('stroke','#4A90D9');line.setAttribute('stroke-width','3');
+        line.setAttribute('stroke-linecap','round');
+        world.appendChild(line);
+        const dot=document.createElementNS(SVG_NS,'circle');
+        dot.setAttribute('cx',dropAction==='before'?dropTarget.x-8:dropTarget.x+dropTarget.width+8);
+        dot.setAttribute('cy',lineY);dot.setAttribute('r','4');
+        dot.setAttribute('fill','#4A90D9');
+        world.appendChild(dot);
+        const label=document.createElementNS(SVG_NS,'text');
+        label.setAttribute('x',dropTarget.x+dropTarget.width+20);
+        label.setAttribute('y',lineY+1);
+        label.setAttribute('font-size','11');label.setAttribute('fill','#4A90D9');
+        label.setAttribute('dominant-baseline','middle');
+        label.textContent=dropAction==='before'?'↑ 插入前方':'↓ 插入后方';
+        world.appendChild(label);
+      }
+    }
+    const ghostG=document.createElementNS(SVG_NS,'g');
+    renderDragGhost(dragNode,ghostG);
+    world.appendChild(ghostG);
   }
 },{passive:false});
 
@@ -2401,7 +2470,16 @@ svgEl.addEventListener('touchend',function(e){
     isDragging=false;dragNode=null;dropTarget=null;dropAction='child';viewport.classList.remove('no-select');render();return;
   }
   if(isPanning){isPanning=false;viewport.classList.remove('no-select');return}
-  if(!touchMoved&&touchStartNode&&(Date.now()-touchStartTime<300)){selectNode(touchStartNode)}
+  if(!touchMoved&&touchStartNode&&(Date.now()-touchStartTime<300)){
+    selectNode(touchStartNode);
+    const now=Date.now();
+    if(lastTapNode===touchStartNode&&now-lastTapTime<400){
+      startInlineEdit(touchStartNode);
+      lastTapTime=0;lastTapNode=null;
+    }else{
+      lastTapTime=now;lastTapNode=touchStartNode;
+    }
+  }
   touchStartNode=null;
 },{passive:true});
 
