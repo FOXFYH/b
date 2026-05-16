@@ -2054,9 +2054,9 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
   const action=item.getAttribute('data-action');
   if(!selectedNode)return;
   if(action==='more'){
+    const qmRect=document.getElementById('node-quick-menu').getBoundingClientRect();
     hideNodeQuickMenu();
     const menu=document.getElementById('context-menu');
-    const qmRect=document.getElementById('node-quick-menu').getBoundingClientRect();
     menu.style.display='block';
     const menuWidth=menu.offsetWidth||140;
     const menuHeight=menu.offsetHeight||300;
