@@ -86,6 +86,8 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 #node-quick-menu .qm-item{padding:3px 8px;font-size:12px;cursor:pointer;border-radius:3px;color:#333;user-select:none;-webkit-user-select:none}
 #node-quick-menu .qm-item:hover{background:#e8f0fe;color:#4A90D9}
 #node-quick-menu .qm-more{font-weight:bold;font-size:15px;color:#4A90D9;border-left:1px solid #e0e0e0;margin-left:2px;padding-left:6px}
+#node-quick-menu .qm-danger{color:#e74c3c}
+#node-quick-menu .qm-danger:hover{background:#fef0ef;color:#c0392b}
 #inline-editor textarea{font-family:'Microsoft YaHei','PingFang SC',sans-serif;border:none;outline:none;resize:none;background:#e8e8e8;box-shadow:0 0 0 1px rgba(74,144,217,.25);overflow:hidden;color:#333;word-break:break-all;white-space:pre-wrap}
 </style>
 </head>
@@ -146,6 +148,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
     <div class="qm-item" data-action="cut">剪切</div>
     <div class="qm-item" data-action="copy">复制</div>
     <div class="qm-item" data-action="paste">粘贴</div>
+    <div class="qm-item qm-danger" data-action="delete">删除</div>
     <div class="qm-item qm-more" data-action="more">+</div>
   </div>
 </div>
@@ -2084,6 +2087,7 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
   else if(action==='cut'){cutNode()}
   else if(action==='copy'){copyNode()}
   else if(action==='paste'){pasteNode()}
+  else if(action==='delete'){deleteNode()}
 });
 
 function toggleDropdown(){
@@ -2132,6 +2136,7 @@ svgEl.addEventListener('mousedown',function(e){
   if(node){
     selectNode(node);
     longPressTimer=setTimeout(()=>{
+      longPressTimer=null;
       if(node.parent){
         isPanning=false;
         viewport.classList.remove('grabbing');
@@ -2231,8 +2236,9 @@ svgEl.addEventListener('mousemove',function(e){
   if(longPressTimer){
     if(Math.abs(e.clientX-dragStartX)>5||Math.abs(e.clientY-dragStartY)>5){
       clearTimeout(longPressTimer);longPressTimer=null;
-      if(!isPanning&&clickPendingNode){
+      if(!isPanning&&!isDragging&&clickPendingNode){
         isPanning=true;
+        hideNodeQuickMenu();
         viewport.classList.add('grabbing');
         viewport.classList.add('no-select');
       }
@@ -2423,6 +2429,7 @@ svgEl.addEventListener('touchstart',function(e){
   if(e.touches.length===2){
     e.preventDefault();
     clearTimeout(longPressTimer);
+    hideNodeQuickMenu();
     if(document.getElementById('inline-editor').style.display==='block')finishInlineEdit();
     const t1=e.touches[0],t2=e.touches[1];
     pinchStartDist=touchDist(t1,t2);
@@ -2441,6 +2448,7 @@ svgEl.addEventListener('touchstart',function(e){
   if(node){
     touchStartNode=node;
     longPressTimer=setTimeout(()=>{
+      longPressTimer=null;
       if(node.parent){
         isPanning=false;
         isDragging=true;dragNode=node;viewport.classList.add('no-select');toast('拖拽中：释放到目标节点以移动');
@@ -2449,6 +2457,7 @@ svgEl.addEventListener('touchstart',function(e){
     panStartX=touch.clientX;panStartY=touch.clientY;
     panStartPanX=panX;panStartPanY=panY;
   }else{
+    hideNodeQuickMenu();
     if(document.getElementById('inline-editor').style.display==='block')finishInlineEdit();
     isPanning=true;panStartX=touch.clientX;panStartY=touch.clientY;
     panStartPanX=panX;panStartPanY=panY;viewport.classList.add('no-select');
@@ -2476,8 +2485,9 @@ svgEl.addEventListener('touchmove',function(e){
   const touch=e.touches[0];touchMoved=true;
   if(longPressTimer){
     clearTimeout(longPressTimer);longPressTimer=null;
-    if(!isPanning&&touchStartNode){
+    if(!isPanning&&!isDragging&&touchStartNode){
       isPanning=true;
+      hideNodeQuickMenu();
       viewport.classList.add('no-select');
     }
   }
