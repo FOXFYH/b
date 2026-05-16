@@ -720,25 +720,41 @@ async function downloadCurrentFile(){
 }
 
 let syncMutex=false;
+let syncQueue=[];
 let conflictResolver=null;
+function enqueueSync(fn,label){
+  return new Promise((resolve,reject)=>{
+    syncQueue.push({fn,label,resolve,reject});
+    processSyncQueue();
+  });
+}
+function processSyncQueue(){
+  if(syncMutex||syncQueue.length===0)return;
+  const task=syncQueue.shift();
+  syncMutex=true;
+  task.fn().then(task.resolve).catch(task.reject).finally(()=>{
+    syncMutex=false;
+    processSyncQueue();
+  });
+}
 
 async function syncCurrentFile(){
   const config=getSyncConfig();
   if(!config.enabled){toast('云同步未启用');return}
   if(!currentFileName||!root){toast('请先保存文件');return}
-  if(syncMutex){toast('同步进行中，请稍候');return}
-  syncMutex=true;
-  updateSyncButton('🔄');
-  try{
-    const dlResult=await downloadCurrentFile();
-    if(dlResult.status==='conflict'){
-      await new Promise(resolve=>{conflictResolver=resolve});
+  if(syncMutex){toast('同步排队中，请稍候')}
+  await enqueueSync(async()=>{
+    updateSyncButton('🔄');
+    try{
+      const dlResult=await downloadCurrentFile();
+      if(dlResult.status==='conflict'){
+        await new Promise(resolve=>{conflictResolver=resolve});
+      }
+      await uploadCurrentFile();
+    }finally{
+      conflictResolver=null;
     }
-    await uploadCurrentFile();
-  }finally{
-    syncMutex=false;
-    conflictResolver=null;
-  }
+  },'单文件同步');
 }
 
 async function autoSyncCurrentFile(){
@@ -748,15 +764,18 @@ async function autoSyncCurrentFile(){
   if(syncMutex)return;
   const cooldownMs=(config.autoSaveInterval||5)*1000;
   if(Date.now()-getLastSyncTime()<cooldownMs)return;
-  syncMutex=true;
-  updateSyncButton('🔄');
-  try{
-    const dlResult=await downloadCurrentFile();
-    if(dlResult.status==='conflict')return;
-    await uploadCurrentFile();
-  }finally{
-    syncMutex=false;
-  }
+  await enqueueSync(async()=>{
+    updateSyncButton('🔄');
+    try{
+      const dlResult=await downloadCurrentFile();
+      if(dlResult.status==='conflict'){
+        await new Promise(resolve=>{conflictResolver=resolve});
+      }
+      await uploadCurrentFile();
+    }finally{
+      conflictResolver=null;
+    }
+  },'自动同步');
 }
 
 function updateSyncButton(icon) {
@@ -878,7 +897,7 @@ async function saveConflictVersion() {
   if(!currentFileName){closeSyncConflict();return}
   const netTime=await getNetworkTime();
   const ts=new Date(netTime).toISOString().replace(/[-:T]/g,'').substring(0,14);
-  const conflictName=currentFileName.replace('.txt','')+'_冲突_'+ts+'.txt';
+  const conflictName=currentFileName.replace('.txt','')+'冲突版本'+ts+'.txt';
   const content=exportNodeText(root).trimEnd();
   const conflictId=genFileId();
   saveFileData(conflictName,content);
@@ -952,27 +971,28 @@ async function reverseOverwriteCloud(){
     closeSyncConflict();
     return;
   }
+  const newVer=cloudVer+1;
   let writeResult;
   if(cloudResult.file){
     writeResult=await callCloudAPI('批量写入',{
       行号:cloudResult.file._行号,
-      数据:{ID:meta.id,文件名:fileName,内容:content,版本号:cloudVer.toString(),更新时间:new Date(netTime).toISOString()}
+      数据:{ID:meta.id,文件名:fileName,内容:content,版本号:newVer.toString(),更新时间:new Date(netTime).toISOString()}
     });
   }else{
     const newRow=await findFirstEmptyRow();
     writeResult=await callCloudAPI('批量写入',{
       行号:newRow,
-      数据:{ID:meta.id,文件名:fileName,内容:content,版本号:cloudVer.toString(),更新时间:new Date(netTime).toISOString()}
+      数据:{ID:meta.id,文件名:fileName,内容:content,版本号:newVer.toString(),更新时间:new Date(netTime).toISOString()}
     });
   }
   if(writeResult.status==='success'){
-    setFileVersion(fileName,cloudVer);
-    setLastSyncVersion(fileName,cloudVer);
+    setFileVersion(fileName,newVer);
+    setLastSyncVersion(fileName,newVer);
     lastContentHash=getContentHash();
     setLastSyncTime(Date.now());
     opCountSinceSync=0;
     updateVersionInfo();
-    toast('已反向覆盖云端，版本矫正为: '+cloudVer);
+    toast('已反向覆盖云端，版本矫正为: '+newVer);
   }else{
     toast('反向覆盖失败：'+(writeResult.tongzhi||writeResult.message||'未知错误'));
   }
@@ -1915,24 +1935,89 @@ function doImport(){
 }
 
 function loadFile(){document.getElementById('fileInput').click()}
-function handleFile(e){
+async function handleFile(e){
   const file=e.target.files[0];if(!file)return;
   const reader=new FileReader();
-  reader.onload=function(ev){
-    root=parseText(ev.target.result);selectedNode=null;
-    currentFileName=file.name;
-    saveFileData(file.name,ev.target.result);
-    localStorage.setItem('mindmap_data',ev.target.result);
-    localStorage.setItem('mindmap_current_file',file.name);
+  reader.onload=async function(ev){
+    const content=ev.target.result;
+    const fileName=file.name;
     const idx=getFileIndex();
-    const f=idx.find(x=>x.name===file.name);
-    if(f){f.version=1;f.lastSyncVersion=0}
-    setFileIndex(idx);
-    lastContentHash=getContentHash();
-    activeFileName=currentFileName;
-    rebuildMap();render();fitScreen();toast('已加载：'+file.name);
+    const existing=idx.find(x=>x.name===fileName);
+    if(existing){
+      const choice=await showImportChoice(fileName);
+      if(choice==='update'){
+        existing.version=(existing.version||0)+10;
+        existing.lastSyncVersion=existing.lastSyncVersion||0;
+        if(!existing.id){existing.id=genFileId()}
+        setFileIndex(idx);
+        saveFileData(fileName,content);
+        currentFileName=fileName;
+        root=parseText(content);selectedNode=null;
+        localStorage.setItem('mindmap_data',content);
+        localStorage.setItem('mindmap_current_file',fileName);
+        lastContentHash=getContentHash();
+        activeFileName=currentFileName;
+        rebuildMap();render();fitScreen();
+        await uploadCurrentFile();
+        toast('已更新：'+fileName+' v'+existing.version);
+      }else if(choice==='newfile'){
+        const baseName=fileName.replace('.txt','');
+        let newName=baseName+'_导入.txt';
+        let n=1;
+        while(idx.find(x=>x.name===newName)){newName=baseName+'_导入'+(++n)+'.txt'}
+        const newId=genFileId();
+        saveFileData(newName,content);
+        const idx2=getFileIndex();
+        const f=idx2.find(x=>x.name===newName);
+        if(f){f.id=newId;f.version=1;f.lastSyncVersion=0;setFileIndex(idx2)}
+        currentFileName=newName;
+        root=parseText(content);selectedNode=null;
+        localStorage.setItem('mindmap_data',content);
+        localStorage.setItem('mindmap_current_file',newName);
+        lastContentHash=getContentHash();
+        activeFileName=currentFileName;
+        rebuildMap();render();fitScreen();
+        await uploadCurrentFile();
+        toast('已新建：'+newName);
+      }
+    }else{
+      const newId=genFileId();
+      saveFileData(fileName,content);
+      const idx2=getFileIndex();
+      const f=idx2.find(x=>x.name===fileName);
+      if(f){f.id=newId;f.version=1;f.lastSyncVersion=0;setFileIndex(idx2)}
+      currentFileName=fileName;
+      root=parseText(content);selectedNode=null;
+      localStorage.setItem('mindmap_data',content);
+      localStorage.setItem('mindmap_current_file',fileName);
+      lastContentHash=getContentHash();
+      activeFileName=currentFileName;
+      rebuildMap();render();fitScreen();
+      await uploadCurrentFile();
+      toast('已导入：'+fileName);
+    }
   };
   reader.readAsText(file,'utf-8');e.target.value='';
+}
+function showImportChoice(fileName){
+  return new Promise(resolve=>{
+    const modal=document.createElement('div');
+    modal.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000';
+    const box=document.createElement('div');
+    box.style.cssText='background:#fff;border-radius:12px;padding:24px;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.3)';
+    box.innerHTML='<h3 style="margin:0 0 12px;font-size:16px;color:#333">导入同名文件</h3>'+
+      '<p style="margin:0 0 16px;font-size:14px;color:#666">"'+fileName+'" 已存在，如何处理？</p>'+
+      '<div style="display:flex;flex-direction:column;gap:8px">'+
+      '<button id="importUpdate" style="padding:10px;border:none;border-radius:8px;background:#3498DB;color:#fff;cursor:pointer;font-size:14px">更新同名文件（版本号+10）</button>'+
+      '<button id="importNew" style="padding:10px;border:none;border-radius:8px;background:#27ae60;color:#fff;cursor:pointer;font-size:14px">当做全新文件</button>'+
+      '<button id="importCancel" style="padding:10px;border:none;border-radius:8px;background:#95a5a6;color:#fff;cursor:pointer;font-size:14px">取消</button>'+
+      '</div>';
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+    box.querySelector('#importUpdate').onclick=()=>{document.body.removeChild(modal);resolve('update')};
+    box.querySelector('#importNew').onclick=()=>{document.body.removeChild(modal);resolve('newfile')};
+    box.querySelector('#importCancel').onclick=()=>{document.body.removeChild(modal);resolve('cancel')};
+  });
 }
 
 function exportText(){
@@ -1941,6 +2026,28 @@ function exportText(){
   const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download=currentFileName||'思维导图.txt';a.click();URL.revokeObjectURL(a.href);toast('已导出');
+}
+
+function showAllSyncConflict(fileName,localVer,cloudVer){
+  return new Promise(resolve=>{
+    const modal=document.createElement('div');
+    modal.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000';
+    const box=document.createElement('div');
+    box.style.cssText='background:#fff;border-radius:12px;padding:24px;max-width:380px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.3)';
+    box.innerHTML='<h3 style="margin:0 0 12px;font-size:16px;color:#e67e22">⚠️ 同步冲突</h3>'+
+      '<p style="margin:0 0 8px;font-size:14px;color:#333">"'+fileName+'" 本地v'+localVer+' vs 云端v'+cloudVer+'</p>'+
+      '<p style="margin:0 0 16px;font-size:13px;color:#666">本地有未同步编辑，云端版本更高</p>'+
+      '<div style="display:flex;flex-direction:column;gap:8px">'+
+      '<button id="syncOverwrite" style="padding:10px;border:none;border-radius:8px;background:#3498DB;color:#fff;cursor:pointer;font-size:14px">覆盖本地（用云端版本）</button>'+
+      '<button id="syncConflict" style="padding:10px;border:none;border-radius:8px;background:#e67e22;color:#fff;cursor:pointer;font-size:14px">建立冲突版本+覆盖本地</button>'+
+      '<button id="syncSkip" style="padding:10px;border:none;border-radius:8px;background:#95a5a6;color:#fff;cursor:pointer;font-size:14px">跳过此文件</button>'+
+      '</div>';
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+    box.querySelector('#syncOverwrite').onclick=()=>{document.body.removeChild(modal);resolve('overwrite')};
+    box.querySelector('#syncConflict').onclick=()=>{document.body.removeChild(modal);resolve('conflict')};
+    box.querySelector('#syncSkip').onclick=()=>{document.body.removeChild(modal);resolve('skip')};
+  });
 }
 
 function saveToLocal(){
@@ -2253,13 +2360,13 @@ async function copyCurrentFile(){
 async function syncAllFiles(){
   const config=getSyncConfig();
   if(!config.enabled){toast('云同步未启用');return}
-  if(syncMutex){toast('同步进行中，请稍候');return}
-  syncMutex=true;
-  const btn=document.getElementById('syncAllBtn');
-  const status=document.getElementById('fileSyncStatus');
-  btn.disabled=true;btn.textContent='⏳ 同步中...';
-  status.style.display='block';status.style.color='#666';
-  status.textContent='🔄 正在同步全部文件...';
+  if(syncMutex){toast('同步排队中，请稍候')}
+  await enqueueSync(async()=>{
+    const btn=document.getElementById('syncAllBtn');
+    const status=document.getElementById('fileSyncStatus');
+    btn.disabled=true;btn.textContent='⏳ 同步中...';
+    status.style.display='block';status.style.color='#666';
+    status.textContent='🔄 正在同步全部文件...';
   let uploaded=0,downloaded=0,deleted=0,skipped=0,errors=0;
   try{
     const cloudResult=await callCloudAPI('读取全部');
@@ -2267,7 +2374,6 @@ async function syncAllFiles(){
       status.style.color='#e74c3c';
       status.textContent='❌ 获取云端数据失败：'+(cloudResult.tongzhi||cloudResult.message||'未知错误');
       btn.disabled=false;btn.textContent='☁️ 全部同步';
-      syncMutex=false;
       return;
     }
     const cloudFiles=cloudResult.数据;
@@ -2331,7 +2437,46 @@ async function syncAllFiles(){
               }
             }
             downloaded++;
-          }else{skipped++}
+          }else{
+            const choice=await showAllSyncConflict(localFile.name,localVer,cloudVer);
+            if(choice==='overwrite'&&cf.内容){
+              saveFileData(localFile.name,cf.内容);
+              localFile.version=cloudVer;
+              localFile.lastSyncVersion=cloudVer;
+              if(localFile.name===currentFileName){
+                root=parseText(cf.内容);selectedNode=null;
+                rebuildMap();render();
+                localStorage.setItem('mindmap_data',cf.内容);
+              }
+              downloaded++;
+            }else if(choice==='conflict'){
+              const netTime=await getNetworkTime();
+              const ts=new Date(netTime).toISOString().replace(/[-:T]/g,'').substring(0,14);
+              const conflictName=localFile.name.replace('.txt','')+'冲突版本'+ts+'.txt';
+              const conflictId=genFileId();
+              const fd=loadFileData(localFile.name);
+              if(fd&&fd.data){
+                saveFileData(conflictName,fd.data);
+                const idx2=getFileIndex();
+                const f2=idx2.find(x=>x.name===conflictName);
+                if(f2){f2.id=conflictId;f2.version=localVer;f2.lastSyncVersion=localVer;setFileIndex(idx2)}
+                const newRow=await findFirstEmptyRow();
+                await callCloudAPI('批量写入',{
+                  行号:newRow,
+                  数据:{ID:conflictId,文件名:conflictName,内容:fd.data,版本号:localVer.toString(),更新时间:new Date(netTime).toISOString()}
+                }).catch(()=>{});
+              }
+              saveFileData(localFile.name,cf.内容);
+              localFile.version=cloudVer;
+              localFile.lastSyncVersion=cloudVer;
+              if(localFile.name===currentFileName){
+                root=parseText(cf.内容);selectedNode=null;
+                rebuildMap();render();
+                localStorage.setItem('mindmap_data',cf.内容);
+              }
+              downloaded++;
+            }else{skipped++}
+          }
         }
       }
     }
@@ -2420,7 +2565,7 @@ async function syncAllFiles(){
   status.textContent=msg;
   btn.disabled=false;btn.textContent='☁️ 全部同步';
   setLastSyncTime(Date.now());
-  syncMutex=false;
+  },'全部同步');
 }
 async function deleteNamedFile(name){
   if(!confirm('确定删除 "'+name+'" ？'))return;
