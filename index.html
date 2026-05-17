@@ -253,7 +253,6 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <button onclick="syncAllFiles()" id="syncAllBtn" title="同步全部文件">☁️ 全部同步</button>
-      <button onclick="refreshCloudFiles()" id="refreshCloudBtn" title="从云端拉取文件列表">🔄 刷新云端</button>
     </div>
     <div id="fileManagerFallback" style="flex:1;overflow-y:auto;min-height:100px">
       <div id="fileList" style="flex:1;overflow-y:auto;min-height:100px"></div>
@@ -2142,94 +2141,6 @@ function closeFileManager(){
   startSyncTimers();
 }
 
-async function refreshCloudFiles(){
-  const btn=document.getElementById('refreshCloudBtn');
-  const status=document.getElementById('fileSyncStatus');
-  btn.disabled=true;
-  btn.textContent='⏳ 刷新中...';
-  status.style.display='block';
-  status.style.color='#666';
-  status.textContent='🔍 正在获取云端文件列表...';
-  try{
-    const result=await callCloudAPI('读取全部');
-    if(result.status!=='success'||!result.数据){
-      status.style.color='#e74c3c';
-      status.textContent='❌ 获取云端文件失败: '+(result.tongzhi||result.message||'未知错误');
-      return;
-    }
-    const allCloudRows=result.数据||[];
-    const idx=getFileIndex();
-    for(const f of idx){
-      if(!f.id||f.id.trim()===''){f.id=genFileId()}
-      if(f.version===undefined)f.version=0;
-      if(f.lastSyncVersion===undefined)f.lastSyncVersion=0;
-    }
-    let added=0,updated=0,deleted=0;
-    const cloudIds=new Set();
-    const cloudDeleteIds=new Set();
-    for(const cf of allCloudRows){
-      if(!cf.文件名||cf.文件名.trim()==='')continue;
-      if(cf.文件名.startsWith('删除FYHFOX')){
-        const delId=cf.文件名.replace('删除FYHFOX','');
-        cloudDeleteIds.add(delId);
-        const localFile=idx.find(f=>f.id===delId);
-        if(localFile){
-          deleteFileData(localFile.name);
-          idx.splice(idx.indexOf(localFile),1);
-          deleted++;
-        }
-        continue;
-      }
-      if(!cf.ID||cf.ID.trim()==='')continue;
-      cloudIds.add(cf.ID);
-      const existing=idx.find(f=>f.id===cf.ID);
-      if(existing){
-        existing.time=Date.now();
-        if(cf.文件名)existing.name=cf.文件名;
-        if(cf.版本号)existing.version=parseInt(cf.版本号);
-        updated++;
-      }else{
-        idx.push({name:cf.文件名,time:Date.now(),id:cf.ID,version:parseInt(cf.版本号||'0'),lastSyncVersion:parseInt(cf.版本号||'0')});
-        added++;
-      }
-      if(cf.内容){
-        localStorage.setItem('mindmap_file_'+cf.文件名,JSON.stringify({data:cf.内容,view:{zoom:1,panX:0,panY:0}}));
-      }
-    }
-    for(let i=idx.length-1;i>=0;i--){
-      const f=idx[i];
-      if(cloudIds.has(f.id))continue;
-      if(cloudDeleteIds.has(f.id)){
-        deleteFileData(f.name);
-        idx.splice(i,1);
-        deleted++;
-      }
-    }
-    setFileIndex(idx);
-    for(const delId of cloudDeleteIds){
-      try{
-        const lookup=await callCloudAPI('查找',{列名:'文件名',关键字:'删除FYHFOX'+delId});
-        if(lookup.status==='success'&&lookup.匹配数>0&&lookup.数据[0]._行号){
-          const netTime=await getNetworkTime();
-          callCloudAPI('批量写入',{
-            行号:lookup.数据[0]._行号,
-            数据:{ID:'',文件名:'',内容:'',版本号:'0',更新时间:new Date(netTime).toISOString()}
-          }).catch(()=>{});
-        }
-      }catch(e){}
-    }
-    renderFileList();
-    let msg='✅ 同步完成 | 新增: '+added+' | 更新: '+updated+' | 远程删除: '+deleted;
-    status.style.color='#27ae60';
-    status.textContent=msg;
-  }catch(error){
-    status.style.color='#e74c3c';
-    status.textContent='❌ 刷新失败: '+error.message;
-  }finally{
-    btn.disabled=false;
-    btn.textContent='🔄 刷新云端';
-  }
-}
 function saveNamedFile(){
   if(!root)return;
   let name=document.getElementById('fileNameInput').value.trim();
@@ -3387,10 +3298,6 @@ const SAMPLE_TEXT=`思维导图
     if(data.type === 'syncComplete'){
       // 一键同步完成
       toast(`同步完成 | 拉取:${data.pulled} 上传:${data.uploaded}`);
-    }
-    
-    if(data.type === 'cloudFilesRefreshed'){
-      toast(`云端刷新完成 | ${data.count}个文件`);
     }
   });
 })();
