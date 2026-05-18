@@ -347,6 +347,7 @@ let cloudCheckTimer = null;
 let lastContentHash = '';
 let lastSaveTime = 0;
 let lastSyncTime = 0;
+let globalLastSyncTime = 0;
 let pendingUploadVersion = 0;
 let opCountSinceSync = 0;
 
@@ -469,7 +470,16 @@ function getLastSyncTime(){
 }
 function setLastSyncTime(t){
   lastSyncTime=t;
+  globalLastSyncTime=t;
   localStorage.setItem('mindmap_last_sync_time',t.toString());
+  localStorage.setItem('mindmap_global_last_sync_time',t.toString());
+}
+function getGlobalLastSyncTime(){
+  try{return parseInt(localStorage.getItem('mindmap_global_last_sync_time')||'0')}catch(e){return 0}
+}
+function setGlobalLastSyncTime(t){
+  globalLastSyncTime=t;
+  localStorage.setItem('mindmap_global_last_sync_time',t.toString());
 }
 
 function updateVersionInfo(){
@@ -750,6 +760,7 @@ async function syncCurrentFile(){
         await new Promise(resolve=>{conflictResolver=resolve});
       }
       await uploadCurrentFile();
+      setGlobalLastSyncTime(Date.now());
     }finally{
       conflictResolver=null;
     }
@@ -762,7 +773,7 @@ async function autoSyncCurrentFile(){
   if(!currentFileName||!root)return;
   if(syncMutex)return;
   const cooldownMs=(config.autoSaveInterval||5)*1000;
-  if(Date.now()-getLastSyncTime()<cooldownMs)return;
+  if(Date.now()-getGlobalLastSyncTime()<cooldownMs)return;
   await enqueueSync(async()=>{
     updateSyncButton('🔄');
     try{
@@ -771,6 +782,7 @@ async function autoSyncCurrentFile(){
         await new Promise(resolve=>{conflictResolver=resolve});
       }
       await uploadCurrentFile();
+      setGlobalLastSyncTime(Date.now());
     }finally{
       conflictResolver=null;
     }
@@ -896,7 +908,8 @@ async function saveConflictVersion() {
   if(!currentFileName){closeSyncConflict();return}
   const netTime=await getNetworkTime();
   const ts=new Date(netTime).toISOString().replace(/[-:T]/g,'').substring(0,14);
-  const conflictName=currentFileName.replace('.txt','')+'冲突版本'+ts+'.txt';
+  const baseName=currentFileName.replace(/\.txt$/,'');
+  const conflictName=baseName+'_冲突_'+ts+'.txt';
   const content=exportNodeText(root).trimEnd();
   const conflictId=genFileId();
   saveFileData(conflictName,content);
@@ -999,6 +1012,7 @@ async function reverseOverwriteCloud(){
 }
 
 // ===================== 自动同步 =====================
+let isAutoSyncTriggered=false;
 function startSyncTimers() {
   stopSyncTimers();
   const config = getSyncConfig();
@@ -1006,6 +1020,7 @@ function startSyncTimers() {
 
   autoSaveTimer = setInterval(() => {
     if (!root||!currentFileName) return;
+    if(isAutoSyncTriggered)return;
     const now = Date.now();
     const cooldownMs = (config.autoSaveInterval || 5) * 1000;
     if (now - lastSaveTime < cooldownMs) return;
@@ -1017,8 +1032,9 @@ function startSyncTimers() {
       lastSaveTime = now;
       lastContentHash = currentHash;
       const threshold = config.syncThreshold || 5;
-      if (opCountSinceSync >= threshold && (now - getLastSyncTime()) >= cooldownMs) {
-        autoSyncCurrentFile().catch(()=>{});
+      if (opCountSinceSync >= threshold && (now - getGlobalLastSyncTime()) >= cooldownMs) {
+        isAutoSyncTriggered=true;
+        autoSyncCurrentFile().finally(()=>{isAutoSyncTriggered=false}).catch(()=>{isAutoSyncTriggered=false});
       }
     }
   }, 1000);
@@ -1026,12 +1042,14 @@ function startSyncTimers() {
   cloudCheckTimer = setInterval(() => {
     if (!currentFileName) return;
     if (syncMutex) return;
+    if(isAutoSyncTriggered)return;
     const now = Date.now();
     const checkIntervalMs = (config.cloudCheckInterval || 5) * 60 * 1000;
     const saveIntervalMs = (config.autoSaveInterval || 5) * 1000;
     if (checkIntervalMs <= saveIntervalMs) return;
-    if (now - getLastSyncTime() >= checkIntervalMs) {
-      autoSyncCurrentFile().catch(()=>{});
+    if (now - getGlobalLastSyncTime() >= checkIntervalMs) {
+      isAutoSyncTriggered=true;
+      autoSyncCurrentFile().finally(()=>{isAutoSyncTriggered=false}).catch(()=>{isAutoSyncTriggered=false});
     }
   }, 60000);
 }
@@ -1945,7 +1963,7 @@ async function handleFile(e){
     if(existing){
       const choice=await showImportChoice(fileName);
       if(choice==='update'){
-        existing.version=(existing.version||0)+10;
+        existing.version=(existing.version||0)+1;
         existing.lastSyncVersion=existing.lastSyncVersion||0;
         if(!existing.id){existing.id=genFileId()}
         setFileIndex(idx);
@@ -2007,7 +2025,7 @@ function showImportChoice(fileName){
     box.innerHTML='<h3 style="margin:0 0 12px;font-size:16px;color:#333">导入同名文件</h3>'+
       '<p style="margin:0 0 16px;font-size:14px;color:#666">"'+fileName+'" 已存在，如何处理？</p>'+
       '<div style="display:flex;flex-direction:column;gap:8px">'+
-      '<button id="importUpdate" style="padding:10px;border:none;border-radius:8px;background:#3498DB;color:#fff;cursor:pointer;font-size:14px">更新同名文件（版本号+10）</button>'+
+      '<button id="importUpdate" style="padding:10px;border:none;border-radius:8px;background:#3498DB;color:#fff;cursor:pointer;font-size:14px">更新同名文件（版本号+1）</button>'+
       '<button id="importNew" style="padding:10px;border:none;border-radius:8px;background:#27ae60;color:#fff;cursor:pointer;font-size:14px">当做全新文件</button>'+
       '<button id="importCancel" style="padding:10px;border:none;border-radius:8px;background:#95a5a6;color:#fff;cursor:pointer;font-size:14px">取消</button>'+
       '</div>';
@@ -2074,7 +2092,10 @@ function saveFileData(name,data){
     if(!existing.id){existing.id=genFileId()}
     if(existing.version===undefined){existing.version=0}
     if(existing.lastSyncVersion===undefined){existing.lastSyncVersion=0}
-  }else{idx.push({name,time:Date.now(),id:genFileId(),version:0,lastSyncVersion:0})}
+  }else{
+    const newId=genFileId();
+    idx.push({name,time:Date.now(),id:newId,version:0,lastSyncVersion:0});
+  }
   setFileIndex(idx);
   try{localStorage.setItem('mindmap_file_'+name,JSON.stringify({data,view:{zoom,panX,panY}}))}catch(e){toast('存储空间不足')}
 }
@@ -2092,7 +2113,7 @@ function deleteFileData(name){
 }
 function renderFileList(){
   const list=document.getElementById('fileList');
-  const idx=getFileIndex().sort((a,b)=>b.time-a.time);
+  const idx=getFileIndex().filter(f=>f.id&&f.id.trim()!=='').sort((a,b)=>b.time-a.time);
   if(idx.length===0){list.innerHTML='<div style="text-align:center;color:#999;padding:30px 0">暂无保存的文件</div>';return}
   list.innerHTML=idx.map(f=>{
     const d=new Date(f.time);
@@ -2302,7 +2323,7 @@ async function syncAllFiles(){
     }
     const idx=getFileIndex();
     for(const f of idx){
-      if(!f.id||f.id.trim()===''){f.id=genFileId()}
+      if(!f.id||f.id.trim()==='')continue;
       if(f.version===undefined)f.version=0;
       if(f.lastSyncVersion===undefined)f.lastSyncVersion=0;
     }
@@ -2333,6 +2354,20 @@ async function syncAllFiles(){
         }
         downloaded++;
       }else{
+        if(localFile.name!==cf.文件名){
+          const oldName=localFile.name;
+          const fd=loadFileData(oldName);
+          if(fd){
+            deleteFileData(oldName);
+            saveFileData(cf.文件名,fd.data);
+            localFile.name=cf.文件名;
+            if(oldName===currentFileName){
+              currentFileName=cf.文件名;
+              localStorage.setItem('mindmap_current_file',cf.文件名);
+            }
+            toast('文件已重命名：'+oldName+' → '+cf.文件名);
+          }
+        }
         const localVer=localFile.version||0;
         const cloudVer=parseInt(cf.版本号||'0');
         if(cloudVer>localVer){
@@ -2349,6 +2384,7 @@ async function syncAllFiles(){
             }
             downloaded++;
           }else{
+            toast('⚠️ 文件 "'+localFile.name+'" 存在同步冲突，请手动处理');
             const choice=await showAllSyncConflict(localFile.name,localVer,cloudVer);
             if(choice==='overwrite'&&cf.内容){
               saveFileData(localFile.name,cf.内容);
@@ -2363,7 +2399,8 @@ async function syncAllFiles(){
             }else if(choice==='conflict'){
               const netTime=await getNetworkTime();
               const ts=new Date(netTime).toISOString().replace(/[-:T]/g,'').substring(0,14);
-              const conflictName=localFile.name.replace('.txt','')+'冲突版本'+ts+'.txt';
+              const baseName=localFile.name.replace(/\.txt$/,'');
+              const conflictName=baseName+'_冲突_'+ts+'.txt';
               const conflictId=genFileId();
               const fd=loadFileData(localFile.name);
               if(fd&&fd.data){
@@ -2476,6 +2513,7 @@ async function syncAllFiles(){
   status.textContent=msg;
   btn.disabled=false;btn.textContent='☁️ 全部同步';
   setLastSyncTime(Date.now());
+  setGlobalLastSyncTime(Date.now());
   },'全部同步');
 }
 async function deleteNamedFile(name){
@@ -2503,7 +2541,25 @@ async function deleteNamedFile(name){
         return;
       }
       setLastSyncTime(Date.now());
+    }else if(!cloudResult.file){
+      const netTime=await getNetworkTime();
+      const newRow=await findFirstEmptyRow();
+      const result=await callCloudAPI('批量写入',{
+        行号:newRow,
+        数据:{ID:'',文件名:'删除FYHFOX'+meta.id,内容:'',版本号:'0',更新时间:new Date(netTime).toISOString()}
+      });
+      if(result.status!=='success'){
+        toast('云端删除标记失败：'+(result.tongzhi||result.message||'未知错误'));
+        return;
+      }
+      setLastSyncTime(Date.now());
     }
+  }
+  const idx=getFileIndex();
+  const fileEntry=idx.find(f=>f.name===name);
+  if(fileEntry){
+    fileEntry.id='';
+    setFileIndex(idx);
   }
   deleteFileData(name);
   if(currentFileName===name){
@@ -3251,6 +3307,8 @@ const SAMPLE_TEXT=`思维导图
   
   // 初始化云同步
   lastContentHash = getContentHash();
+  lastSyncTime = getLastSyncTime();
+  globalLastSyncTime = getGlobalLastSyncTime();
   activeFileName = currentFileName;
   
   (async function() {
