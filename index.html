@@ -115,7 +115,6 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   <div class="sep"></div>
   <button onclick="createNewMap()">+ 新建</button>
   <button onclick="exportText()">📤 导出</button>
-  <button onclick="saveToLocal()">💾 保存</button>
   <button onclick="openFileManagerFrame()">📁 文件</button>
   <button onclick="syncCurrentFile()" id="syncBtn" title="同步当前文件到云端">☁ 同步</button>
   <button onclick="showSyncSettings()" title="同步设置">⚙</button>
@@ -423,11 +422,10 @@ function getFileMeta(name){
   try{
     const idx=getFileIndex();
     const f=idx.find(x=>x.name===name);
-    if(!f)return{name,id:genFileId(),version:0,lastSyncVersion:0};
-    if(!f.id){f.id=genFileId();setFileIndex(idx)}
+    if(!f)return{name,id:'',version:0,lastSyncVersion:0};
     if(f.lastSyncVersion===undefined){f.lastSyncVersion=f.version||0;setFileIndex(idx)}
     return f;
-  }catch(e){return{name,id:genFileId(),version:0,lastSyncVersion:0}}
+  }catch(e){return{name,id:'',version:0,lastSyncVersion:0}}
 }
 
 function getFileVersion(name){
@@ -912,7 +910,7 @@ async function saveConflictVersion() {
   const conflictName=baseName+'_冲突_'+ts+'.txt';
   const content=exportNodeText(root).trimEnd();
   const conflictId=genFileId();
-  saveFileData(conflictName,content);
+  saveFileData(conflictName,content,conflictId);
   const idx=getFileIndex();
   const f=idx.find(x=>x.name===conflictName);
   if(f){f.id=conflictId;f.version=1;f.lastSyncVersion=1;setFileIndex(idx)}
@@ -1941,10 +1939,10 @@ function doImport(){
   // 新建时自动生成文件名
   currentFileName=getDefaultFileName();
   const content=exportNodeText(root).trimEnd();
-  saveFileData(currentFileName,content);
+  const newId=genFileId();
+  saveFileData(currentFileName,content,newId);
   localStorage.setItem('mindmap_data',content);
   localStorage.setItem('mindmap_current_file',currentFileName);
-  setFileVersion(currentFileName,0);
   lastContentHash=getContentHash();
   activeFileName=currentFileName;
   closeImport();rebuildMap();render();fitScreen();
@@ -1983,10 +1981,7 @@ async function handleFile(e){
         let n=1;
         while(idx.find(x=>x.name===newName)){newName=baseName+'_导入'+(++n)+'.txt'}
         const newId=genFileId();
-        saveFileData(newName,content);
-        const idx2=getFileIndex();
-        const f=idx2.find(x=>x.name===newName);
-        if(f){f.id=newId;f.version=1;f.lastSyncVersion=0;setFileIndex(idx2)}
+        saveFileData(newName,content,newId);
         currentFileName=newName;
         root=parseText(content);selectedNode=null;
         localStorage.setItem('mindmap_data',content);
@@ -1999,10 +1994,7 @@ async function handleFile(e){
       }
     }else{
       const newId=genFileId();
-      saveFileData(fileName,content);
-      const idx2=getFileIndex();
-      const f=idx2.find(x=>x.name===fileName);
-      if(f){f.id=newId;f.version=1;f.lastSyncVersion=0;setFileIndex(idx2)}
+      saveFileData(fileName,content,newId);
       currentFileName=fileName;
       root=parseText(content);selectedNode=null;
       localStorage.setItem('mindmap_data',content);
@@ -2084,16 +2076,16 @@ function getFileIndex(){
   try{return JSON.parse(localStorage.getItem('mindmap_file_index')||'[]')}catch(e){return[]}
 }
 function setFileIndex(idx){try{localStorage.setItem('mindmap_file_index',JSON.stringify(idx))}catch(e){}}
-function saveFileData(name,data){
+function saveFileData(name,data,id){
   const idx=getFileIndex();
   const existing=idx.find(f=>f.name===name);
   if(existing){
     existing.time=Date.now();
-    if(!existing.id){existing.id=genFileId()}
+    if(id&&!existing.id){existing.id=id}
     if(existing.version===undefined){existing.version=0}
     if(existing.lastSyncVersion===undefined){existing.lastSyncVersion=0}
   }else{
-    const newId=genFileId();
+    const newId=id||genFileId();
     idx.push({name,time:Date.now(),id:newId,version:0,lastSyncVersion:0});
   }
   setFileIndex(idx);
@@ -2110,6 +2102,21 @@ function deleteFileData(name){
   const idx=getFileIndex().filter(f=>f.name!==name);
   setFileIndex(idx);
   localStorage.removeItem('mindmap_file_'+name);
+}
+function cleanNoIdFiles(){
+  const idx=getFileIndex();
+  const noIdFiles=idx.filter(f=>!f.id||f.id.trim()==='');
+  if(noIdFiles.length===0)return;
+  for(const f of noIdFiles){
+    localStorage.removeItem('mindmap_file_'+f.name);
+    if(currentFileName===f.name){
+      currentFileName='';
+      localStorage.removeItem('mindmap_current_file');
+    }
+  }
+  const cleaned=idx.filter(f=>f.id&&f.id.trim()!=='');
+  setFileIndex(cleaned);
+  if(noIdFiles.length>0)toast('已清理 '+noIdFiles.length+' 个无ID文件');
 }
 function renderFileList(){
   const list=document.getElementById('fileList');
@@ -2168,13 +2175,12 @@ function saveNamedFile(){
   if(!name){toast('请输入文件名');return}
   if(!name.endsWith('.txt'))name+='.txt';
   const text=exportNodeText(root).trimEnd();
-  const isNew=!getFileIndex().find(f=>f.name===name);
-  saveFileData(name,text);
-  if(isNew){
-    const idx=getFileIndex();
-    const f=idx.find(x=>x.name===name);
-    if(f)f.version=0;
-    setFileIndex(idx);
+  const existing=getFileIndex().find(f=>f.name===name);
+  if(existing){
+    saveFileData(name,text);
+  }else{
+    const newId=genFileId();
+    saveFileData(name,text,newId);
   }
   currentFileName=name;
   localStorage.setItem('mindmap_data',text);
@@ -2222,10 +2228,7 @@ async function renameCurrentFile(){
   const fd=loadFileData(oldName);
   if(fd){
     deleteFileData(oldName);
-    saveFileData(newName,fd.data);
-    const idx=getFileIndex();
-    const f=idx.find(x=>x.name===newName);
-    if(f){f.id=meta.id;f.version=meta.version;f.lastSyncVersion=meta.lastSyncVersion;setFileIndex(idx)}
+    saveFileData(newName,fd.data,meta.id);
     if(fd.view){
       try{localStorage.setItem('mindmap_file_'+newName,JSON.stringify(fd))}catch(e){}
     }
@@ -2263,10 +2266,7 @@ async function copyCurrentFile(){
   while(idx.find(f=>f.name===copyName)){copyName=baseName+'_副本'+(++n)+'.txt'}
   const content=exportNodeText(root).trimEnd();
   const copyId=genFileId();
-  saveFileData(copyName,content);
-  const idx2=getFileIndex();
-  const f=idx2.find(x=>x.name===copyName);
-  if(f){f.id=copyId;f.version=1;f.lastSyncVersion=0;setFileIndex(idx2)}
+  saveFileData(copyName,content,copyId);
   const config=getSyncConfig();
   if(config.enabled){
     const netTime=await getNetworkTime();
@@ -2330,8 +2330,8 @@ async function syncAllFiles(){
     setFileIndex(idx);
     for(const cf of cloudFiles){
       if(!cf.文件名||cf.文件名.trim()==='')continue;
-      if(cf.文件名.startsWith('删除FYHFOX')){
-        const delId=cf.文件名.replace('删除FYHFOX','');
+      if(cf.ID&&cf.ID.startsWith('删除FYHFOX')){
+        const delId=cf.ID.replace('删除FYHFOX','');
         const localFile=idx.find(f=>f.id===delId);
         if(localFile){
           deleteFileData(localFile.name);
@@ -2520,7 +2520,7 @@ async function deleteNamedFile(name){
   if(!confirm('确定删除 "'+name+'" ？'))return;
   const meta=getFileMeta(name);
   const config=getSyncConfig();
-  if(config.enabled){
+  if(config.enabled&&meta.id&&meta.id.trim()!==''){
     const cloudResult=await findFileInCloudById(meta.id);
     if(!cloudResult.networkOk){
       toast('网络异常，无法确认云端状态，删除中止');
@@ -2530,7 +2530,7 @@ async function deleteNamedFile(name){
       const netTime=await getNetworkTime();
       const result=await callCloudAPI('批量写入',{
         行号:cloudResult.file._行号,
-        数据:{ID:'',文件名:'删除FYHFOX'+meta.id,内容:'',版本号:'0',更新时间:new Date(netTime).toISOString()}
+        数据:{ID:'删除FYHFOX'+meta.id,文件名:meta.name,内容:'',版本号:'0',更新时间:new Date(netTime).toISOString()}
       });
       if(result.status!=='success'){
         if(result.isNetworkError){
@@ -2546,7 +2546,7 @@ async function deleteNamedFile(name){
       const newRow=await findFirstEmptyRow();
       const result=await callCloudAPI('批量写入',{
         行号:newRow,
-        数据:{ID:'',文件名:'删除FYHFOX'+meta.id,内容:'',版本号:'0',更新时间:new Date(netTime).toISOString()}
+        数据:{ID:'删除FYHFOX'+meta.id,文件名:meta.name,内容:'',版本号:'0',更新时间:new Date(netTime).toISOString()}
       });
       if(result.status!=='success'){
         toast('云端删除标记失败：'+(result.tongzhi||result.message||'未知错误'));
@@ -2556,9 +2556,9 @@ async function deleteNamedFile(name){
     }
   }
   const idx=getFileIndex();
-  const fileEntry=idx.find(f=>f.name===name);
-  if(fileEntry){
-    fileEntry.id='';
+  const fileIdx=idx.findIndex(f=>f.name===name);
+  if(fileIdx!==-1){
+    idx.splice(fileIdx,1);
     setFileIndex(idx);
   }
   deleteFileData(name);
@@ -3306,6 +3306,7 @@ const SAMPLE_TEXT=`思维导图
   if(panX===0&&panY===0&&zoom===1)setTimeout(fitScreen,100);
   
   // 初始化云同步
+  cleanNoIdFiles();
   lastContentHash = getContentHash();
   lastSyncTime = getLastSyncTime();
   globalLastSyncTime = getGlobalLastSyncTime();
