@@ -2333,10 +2333,10 @@ async function syncAllFiles(){
     const cloudDeleteIds=new Set();
     const cloudById=new Map();
     for(const cf of cloudFiles){
-      if(cf.文件名&&cf.文件名.startsWith('删除FYHFOX')){
-        cloudDeleteIds.add(cf.文件名.replace('删除FYHFOX',''));
+      if(cf.ID&&cf.ID.startsWith('删除FYHFOX')){
+        cloudDeleteIds.add(cf.ID.replace('删除FYHFOX',''));
       }
-      if(cf.ID&&cf.ID.trim()!==''){
+      if(cf.ID&&cf.ID.trim()!==''&&!cf.ID.startsWith('删除FYHFOX')){
         cloudIds.add(cf.ID);
         cloudById.set(cf.ID,cf);
       }
@@ -2349,9 +2349,8 @@ async function syncAllFiles(){
     }
     setFileIndex(idx);
     for(const cf of cloudFiles){
-      if(!cf.文件名||cf.文件名.trim()==='')continue;
-      if(cf.文件名.startsWith('删除FYHFOX')){
-        const delId=cf.文件名.replace('删除FYHFOX','');
+      if(cf.ID&&cf.ID.startsWith('删除FYHFOX')){
+        const delId=cf.ID.replace('删除FYHFOX','');
         const localFile=idx.find(f=>f.id===delId);
         if(localFile){
           deleteFileData(localFile.name);
@@ -2360,6 +2359,7 @@ async function syncAllFiles(){
         }
         continue;
       }
+      if(!cf.文件名||cf.文件名.trim()==='')continue;
       if(!cf.ID||cf.ID.trim()==='')continue;
       const localFile=idx.find(f=>f.id===cf.ID);
       if(!localFile){
@@ -2479,7 +2479,7 @@ async function syncAllFiles(){
     }
     for(const delId of cloudDeleteIds){
       try{
-        const lookup=await callCloudAPI('查找',{列名:'文件名',关键字:'删除FYHFOX'+delId});
+        const lookup=await callCloudAPI('查找',{列名:'ID',关键字:'删除FYHFOX'+delId});
         if(lookup.status==='success'&&lookup.匹配数>0&&lookup.数据[0]._行号){
           const netTime=await getNetworkTime();
           await callCloudAPI('批量写入',{
@@ -2490,7 +2490,7 @@ async function syncAllFiles(){
       }catch(e){}
     }
     for(const cf of cloudFiles){
-      if(cf.文件名&&cf.文件名.startsWith('删除FYHFOX'))continue;
+      if(cf.ID&&cf.ID.startsWith('删除FYHFOX'))continue;
       if(!cf.ID||cf.ID.trim()===''){
         if(!cf.文件名||cf.文件名.trim()==='')continue;
         const localByName=idx.find(f=>f.name===cf.文件名);
@@ -2533,7 +2533,7 @@ async function deleteNamedFile(name){
       const netTime=await getNetworkTime();
       const result=await callCloudAPI('批量写入',{
         行号:cloudResult.file._行号,
-        数据:{ID:'',文件名:'删除FYHFOX'+meta.id,内容:'',版本号:'0',更新时间:new Date(netTime).toISOString()}
+        数据:{ID:'删除FYHFOX'+meta.id,文件名:'',内容:'',版本号:'0',更新时间:new Date(netTime).toISOString()}
       });
       if(result.status!=='success'){
         if(result.isNetworkError){
@@ -2577,7 +2577,7 @@ async function deleteFileById(id){
       const netTime=await getNetworkTime();
       const result=await callCloudAPI('批量写入',{
         行号:cloudResult.file._行号,
-        数据:{ID:'',文件名:'删除FYHFOX'+id,内容:'',版本号:'0',更新时间:new Date(netTime).toISOString()}
+        数据:{ID:'删除FYHFOX'+id,文件名:'',内容:'',版本号:'0',更新时间:new Date(netTime).toISOString()}
       });
       if(result.status!=='success'){
         if(result.isNetworkError){
