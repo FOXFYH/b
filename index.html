@@ -115,7 +115,6 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   <div class="sep"></div>
   <button onclick="createNewMap()">+ 新建</button>
   <button onclick="exportText()">📤 导出</button>
-  <button onclick="saveToLocal()">💾 保存</button>
   <button onclick="openFileManagerFrame()">📁 文件</button>
   <button onclick="syncCurrentFile()" id="syncBtn" title="同步当前文件到云端">☁ 同步</button>
   <button onclick="showSyncSettings()" title="同步设置">⚙</button>
@@ -2049,18 +2048,6 @@ function showAllSyncConflict(fileName,localVer,cloudVer){
   });
 }
 
-function saveToLocal(){
-  if(!root)return;
-  try{
-    const text=exportNodeText(root).trimEnd();
-    localStorage.setItem('mindmap_data',text);
-    if(currentFileName){
-      saveFileData(currentFileName,text);
-    }
-    toast('已保存');
-  }catch(e){toast('保存失败')}
-}
-
 let currentFileName='';
 function getFileIndex(){
   try{return JSON.parse(localStorage.getItem('mindmap_file_index')||'[]')}catch(e){return[]}
@@ -2110,10 +2097,11 @@ function deleteFileDataById(id){
   setFileIndex(newIdx);
 }
 function deleteFileData(name){
-  const idx=getFileIndex().filter(f=>f.name!==name);
-  setFileIndex(idx);
+  const idx=getFileIndex();
   const f=idx.find(x=>x.name===name);
   if(f&&f.id)localStorage.removeItem('mindmap_file_id_'+f.id);
+  const newIdx=idx.filter(x=>x.name!==name);
+  setFileIndex(newIdx);
 }
 function renderFileList(){
   const list=document.getElementById('fileList');
@@ -2364,6 +2352,7 @@ async function syncAllFiles(){
       const localFile=idx.find(f=>f.id===cf.ID);
       if(!localFile){
         idx.push({name:cf.文件名,time:Date.now(),id:cf.ID,version:parseInt(cf.版本号||'0'),lastSyncVersion:parseInt(cf.版本号||'0')});
+        setFileIndex(idx);
         if(cf.内容){
           saveFileData(cf.文件名,cf.内容);
           if(cf.文件名===currentFileName){
