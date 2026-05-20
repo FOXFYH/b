@@ -84,10 +84,11 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 .color-swatch{width:22px;height:22px;border-radius:4px;cursor:pointer;border:2px solid transparent;flex-shrink:0}
 .color-swatch:hover{border-color:#333}
 .color-swatch.selected{border-color:#333}
-.color-picker-row{display:flex;flex-wrap:wrap;gap:4px;padding:6px 12px;align-items:flex-start;max-width:calc(5*26px+4*4px)}
+.color-picker-row{display:flex;flex-direction:column;gap:4px;padding:6px 12px;align-items:flex-start}
+.color-picker-main{display:flex;flex-wrap:wrap;gap:4px;align-items:flex-start}
 .color-toggle{width:22px;height:22px;border-radius:4px;cursor:pointer;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;font-size:14px;color:#666;flex-shrink:0;user-select:none}
 .color-toggle:hover{background:#f0f0f0;border-color:#999}
-.color-extra{display:none;flex-wrap:wrap;gap:4px;width:calc(4*26px+3*4px)}
+.color-extra{display:none;flex-wrap:wrap;gap:4px;max-width:calc(4*22px + 3*4px)}
 .color-extra.expanded{display:flex}
 #inline-editor{position:absolute;display:none;z-index:110}
 #node-quick-menu{position:absolute;display:none;z-index:120;background:#fff;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,.15);padding:2px 4px;gap:2px;flex-direction:row;align-items:center;white-space:nowrap}
@@ -3033,17 +3034,20 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
     if(getLevel(selectedNode)>=1){
       colorRow.style.display='flex';colorSep.style.display='block';colorRow.innerHTML='';
       const currentColor=getNodeBranchColor(selectedNode);
+      const mainDiv=document.createElement('div');
+      mainDiv.className='color-picker-main';
       for(let i=0;i<4&&i<BRANCH_COLORS.length;i++){
         const c=BRANCH_COLORS[i];
         const sw=document.createElement('div');
         sw.className='color-swatch'+(c===currentColor?' selected':'');
         sw.style.background=c;
         sw.onclick=function(){pushHistory();setUserColor(selectedNode,c);rebuildMap();render()};
-        colorRow.appendChild(sw);
+        mainDiv.appendChild(sw);
       }
       const toggle=document.createElement('div');
       toggle.className='color-toggle';
       toggle.textContent='+';
+      mainDiv.appendChild(toggle);
       const extraDiv=document.createElement('div');
       extraDiv.className='color-extra';
       for(let i=4;i<BRANCH_COLORS.length;i++){
@@ -3058,7 +3062,7 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
         const expanded=extraDiv.classList.toggle('expanded');
         toggle.textContent=expanded?'−':'+';
       };
-      colorRow.appendChild(toggle);
+      colorRow.appendChild(mainDiv);
       colorRow.appendChild(extraDiv);
     }else{colorRow.style.display='none';colorSep.style.display='none'}
     e.stopPropagation();
@@ -3358,17 +3362,20 @@ svgEl.addEventListener('contextmenu',function(e){
       colorSep.style.display='block';
       colorRow.innerHTML='';
       const currentColor=getNodeBranchColor(node);
+      const mainDiv=document.createElement('div');
+      mainDiv.className='color-picker-main';
       for(let i=0;i<4&&i<BRANCH_COLORS.length;i++){
         const c=BRANCH_COLORS[i];
         const sw=document.createElement('div');
         sw.className='color-swatch'+(c===currentColor?' selected':'');
         sw.style.background=c;
         sw.onclick=function(){pushHistory();setUserColor(node,c);rebuildMap();render()};
-        colorRow.appendChild(sw);
+        mainDiv.appendChild(sw);
       }
       const toggle=document.createElement('div');
       toggle.className='color-toggle';
       toggle.textContent='+';
+      mainDiv.appendChild(toggle);
       const extraDiv=document.createElement('div');
       extraDiv.className='color-extra';
       for(let i=4;i<BRANCH_COLORS.length;i++){
@@ -3383,7 +3390,7 @@ svgEl.addEventListener('contextmenu',function(e){
         const expanded=extraDiv.classList.toggle('expanded');
         toggle.textContent=expanded?'−':'+';
       };
-      colorRow.appendChild(toggle);
+      colorRow.appendChild(mainDiv);
       colorRow.appendChild(extraDiv);
     } else {
       colorRow.style.display='none';
