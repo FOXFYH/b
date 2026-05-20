@@ -1496,6 +1496,11 @@ function render(){
   isRendering=true;
   const world=document.getElementById('world');
   world.innerHTML='';
+  if(!currentFileName){
+    renderWelcome(world);
+    isRendering=false;
+    return;
+  }
   if(!root){isRendering=false;return}
   renderConns(root,world);
   renderNodes(root,world);
@@ -1503,6 +1508,25 @@ function render(){
   scheduleAutoSave();
   updateVersionInfo();
   isRendering=false;
+}
+
+function renderWelcome(world){
+  const cx=window.innerWidth/2,cy=window.innerHeight/2;
+  const g=document.createElementNS(SVG_NS,'g');
+  const t1=document.createElementNS(SVG_NS,'text');
+  t1.setAttribute('x',cx);t1.setAttribute('y',cy-40);
+  t1.setAttribute('text-anchor','middle');t1.setAttribute('font-size','20');
+  t1.setAttribute('fill','#666');t1.setAttribute('font-family','Microsoft YaHei,PingFang SC,sans-serif');
+  t1.textContent='欢迎使用思维导图编辑器';
+  g.appendChild(t1);
+  const t2=document.createElementNS(SVG_NS,'text');
+  t2.setAttribute('x',cx);t2.setAttribute('y',cy+5);
+  t2.setAttribute('text-anchor','middle');t2.setAttribute('font-size','14');
+  t2.setAttribute('fill','#999');t2.setAttribute('font-family','Microsoft YaHei,PingFang SC,sans-serif');
+  t2.textContent='点击上方「+ 新建」创建文件，或点击「📁 文件」打开已有文件';
+  g.appendChild(t2);
+  world.appendChild(g);
+  zoom=1;panX=0;panY=0;updateTransform();
 }
 
 function renderConns(node,container){
@@ -2056,7 +2080,7 @@ function createNewMap(){
 
 function doImport(){
   let fileName=document.getElementById('newFileName').value.trim();
-  if(!fileName){toast('请输入文件名');return}
+  if(!fileName)fileName=getDefaultFileName();
   if(!fileName.endsWith('.txt'))fileName+='.txt';
   const text=document.getElementById('importText').value;
   pushHistory();
@@ -2114,7 +2138,11 @@ async function handleFile(e){
         saveFileData(newName,content);
         const idx2=getFileIndex();
         const f=idx2.find(x=>x.name===newName);
-        if(f){f.id=newId;f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2)}
+        if(f){
+          const oldId=f.id;
+          if(oldId&&oldId!==newId){const raw=localStorage.getItem('mindmap_file_id_'+oldId);if(raw){localStorage.setItem('mindmap_file_id_'+newId,raw);localStorage.removeItem('mindmap_file_id_'+oldId)}}
+          f.id=newId;f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2);
+        }
         currentFileName=newName;
         root=parseText(content);selectedNode=null;
         localStorage.setItem('mindmap_data',content);
@@ -2130,7 +2158,11 @@ async function handleFile(e){
       saveFileData(fileName,content);
       const idx2=getFileIndex();
       const f=idx2.find(x=>x.name===fileName);
-      if(f){f.id=newId;f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2)}
+      if(f){
+        const oldId=f.id;
+        if(oldId&&oldId!==newId){const raw=localStorage.getItem('mindmap_file_id_'+oldId);if(raw){localStorage.setItem('mindmap_file_id_'+newId,raw);localStorage.removeItem('mindmap_file_id_'+oldId)}}
+        f.id=newId;f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2);
+      }
       currentFileName=fileName;
       root=parseText(content);selectedNode=null;
       localStorage.setItem('mindmap_data',content);
@@ -2555,7 +2587,14 @@ async function copyCurrentFile(){
   saveFileData(copyName,content);
   const idx2=getFileIndex();
   const f=idx2.find(x=>x.name===copyName);
-  if(f){f.id=copyId;f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2)}
+  if(f){
+    const oldId=f.id;
+    if(oldId&&oldId!==copyId){
+      const raw=localStorage.getItem('mindmap_file_id_'+oldId);
+      if(raw){localStorage.setItem('mindmap_file_id_'+copyId,raw);localStorage.removeItem('mindmap_file_id_'+oldId)}
+    }
+    f.id=copyId;f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2);
+  }
   const config=getSyncConfig();
   if(config.enabled){
     const netTime=await getNetworkTime();
@@ -2829,10 +2868,10 @@ async function deleteNamedFile(name){
   if(currentFileName===name){
     currentFileName='';
     localStorage.removeItem('mindmap_current_file');
-    root=parseText(SAMPLE_TEXT);
+    root=null;
     selectedNode=null;
     lastContentHash=getContentHash();
-    rebuildMap();render();
+    render();
     setTimeout(fitScreen,100);
   }
   renderFileList();
@@ -2873,10 +2912,10 @@ async function deleteFileById(id){
   if(currentFileName===name){
     currentFileName='';
     localStorage.removeItem('mindmap_current_file');
-    root=parseText(SAMPLE_TEXT);
+    root=null;
     selectedNode=null;
     lastContentHash=getContentHash();
-    rebuildMap();render();
+    render();
     setTimeout(fitScreen,100);
   }
   renderFileList();
@@ -3596,15 +3635,13 @@ const SAMPLE_TEXT=`思维导图
 \t\t子项D`;
 
 (function init(){
-  let isFirstLoad=false;
   try{
     currentFileName=localStorage.getItem('mindmap_current_file')||'';
     const saved=localStorage.getItem('mindmap_data');
-    if(saved){
+    if(saved&&currentFileName){
       root=parseText(saved);
     }else{
-      root=parseText(SAMPLE_TEXT);
-      isFirstLoad=true;
+      root=null;
     }
     const viewStr=localStorage.getItem('mindmap_view');
     if(viewStr){
@@ -3612,16 +3649,11 @@ const SAMPLE_TEXT=`思维导图
       zoom=v.zoom||1;panX=v.panX||0;panY=v.panY||0;
     }
   }catch(e){
-    root=parseText(SAMPLE_TEXT);
-    isFirstLoad=true;
+    root=null;
   }
-  if(isFirstLoad&&root){
-    (function collapseBelow(n,d){
-      if(d>=3&&n.children.length>0)n.collapsed=true;
-      for(const c of n.children)collapseBelow(c,d+1);
-    })(root,0);
+  if(root){
+    rebuildMap();
   }
-  rebuildMap();
   function clearOldBranchColors(n){
     if(!n._userColor)n._branchColor=null;
     for(const c of n.children)clearOldBranchColors(c);
@@ -3694,13 +3726,11 @@ const SAMPLE_TEXT=`思维导图
       if(currentFileName === data.name){
         currentFileName = '';
         localStorage.removeItem('mindmap_current_file');
-        root = parseText(SAMPLE_TEXT);
+        root = null;
         selectedNode = null;
         lastContentHash = getContentHash();
-        rebuildMap();
         render();
-        setTimeout(fitScreen, 100);
-        toast('已打开默认页');
+        toast('文件已删除');
       }
     }
     
