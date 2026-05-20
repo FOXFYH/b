@@ -78,10 +78,17 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 #context-menu .menu-item:hover{background:#e8f0fe}
 #context-menu .menu-item.danger{color:#e74c3c}
 #context-menu .menu-sep{height:1px;background:#eee;margin:2px 0}
+#context-menu .menu-row{display:flex;gap:0}
+#context-menu .menu-row .menu-item{flex:1;justify-content:center;padding:4px 8px}
+#context-menu .menu-row .menu-item:not(:last-child){border-right:1px solid #eee}
 .color-swatch{width:22px;height:22px;border-radius:4px;cursor:pointer;border:2px solid transparent;flex-shrink:0}
 .color-swatch:hover{border-color:#333}
 .color-swatch.selected{border-color:#333}
-.color-picker-row{display:flex;flex-wrap:wrap;gap:4px;padding:6px 12px;justify-content:flex-start;width:calc(5*24px + 4*4px)}
+.color-picker-row{display:flex;flex-wrap:wrap;gap:4px;padding:6px 12px;align-items:flex-start;max-width:calc(5*26px+4*4px)}
+.color-toggle{width:22px;height:22px;border-radius:4px;cursor:pointer;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;font-size:14px;color:#666;flex-shrink:0;user-select:none}
+.color-toggle:hover{background:#f0f0f0;border-color:#999}
+.color-extra{display:none;flex-wrap:wrap;gap:4px;width:calc(4*26px+3*4px)}
+.color-extra.expanded{display:flex}
 #inline-editor{position:absolute;display:none;z-index:110}
 #node-quick-menu{position:absolute;display:none;z-index:120;background:#fff;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,.15);padding:2px 4px;gap:2px;flex-direction:row;align-items:center;white-space:nowrap}
 #node-quick-menu .qm-item{padding:3px 8px;font-size:12px;cursor:pointer;border-radius:3px;color:#333;user-select:none;-webkit-user-select:none}
@@ -114,10 +121,8 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   <span class="clip-info" id="clipInfo"></span>
   <div class="sep"></div>
   <button onclick="createNewMap()">+ 新建</button>
-  <button onclick="exportText()">📤 导出</button>
   <button onclick="openFileManagerFrame()">📁 文件</button>
   <button onclick="syncCurrentFile()" id="syncBtn" title="同步当前文件到云端">☁ 同步</button>
-  <button onclick="showSyncSettings()" title="同步设置">⚙</button>
   <span id="versionInfo" class="version-info"></span>
   <button onclick="collapseAll()">折叠</button>
   <button onclick="expandAll()">展开</button>
@@ -167,8 +172,10 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 <div id="import-modal">
   <div class="modal-box">
     <h3>新建思维导图</h3>
-    <label>粘贴缩进文本（Tab缩进表示层级，留空则创建默认结构）</label>
-    <textarea id="importText" rows="8" placeholder="根节点&#10;&#9;子节点1&#9;补充说明\n&#10;第二行&#10;&#9;&#9;孙节点1"></textarea>
+    <label>文件名（必填）</label>
+    <input id="newFileName" type="text" placeholder="输入文件名" style="width:100%;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;margin:4px 0 10px;box-sizing:border-box">
+    <label>导入结构文本（可选，留空则自动创建默认结构）</label>
+    <textarea id="importText" rows="6" placeholder="根节点&#10;&#9;子节点1&#9;补充说明\n&#10;第二行&#10;&#9;&#9;孙节点1"></textarea>
     <div class="modal-btns">
       <button onclick="closeImport()">取消</button>
       <button class="primary" onclick="doImport()">创建</button>
@@ -247,8 +254,9 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
       <button class="primary" onclick="saveNamedFile()">保存</button>
       <button onclick="renameCurrentFile()" title="重命名当前文件">重命名</button>
       <button onclick="copyCurrentFile()" title="复制当前文件">复制</button>
-      <button onclick="loadFile();closeFileManager()" title="导入本地txt文件">📂 导入本地</button>
+      <button onclick="loadFile();closeFileManager()" title="导入txt文件">📂 导入</button>
       <button onclick="exportText()" title="导出当前文件">📤 导出</button>
+      <button onclick="showSyncSettings()" title="同步设置">⚙ 同步设置</button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <button onclick="syncAllFiles()" id="syncAllBtn" title="同步全部文件">☁️ 全部同步</button>
@@ -266,12 +274,21 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 <div id="context-menu">
   <div class="menu-item" onclick="addSibling()">➕ 添加同级</div>
   <div class="menu-item" onclick="addChild()">➕ 添加子级</div>
-  <div class="menu-item" onclick="editNodeModal()">✏️ 编辑(弹窗)</div>
+  <div class="menu-item" onclick="editNodeModal()">✏️ 编辑</div>
   <div class="menu-sep"></div>
-  <div class="menu-item" onclick="moveNodeUp()">⬆ 上移</div>
-  <div class="menu-item" onclick="moveNodeDown()">⬇ 下移</div>
-  <div class="menu-sep"></div>
-  <div class="menu-item" onclick="copyAsStructuredText()">📝 复制为结构文本</div>
+  <div class="menu-row">
+    <div class="menu-item" onclick="moveNodeUp()">⬆ 上移</div>
+    <div class="menu-item" onclick="moveNodeDown()">⬇ 下移</div>
+  </div>
+  <div class="menu-row">
+    <div class="menu-item" onclick="copyNode()">📋 复制</div>
+    <div class="menu-item" onclick="cutNode()">✂ 剪切</div>
+  </div>
+  <div class="menu-row">
+    <div class="menu-item danger" onclick="deleteNode()">🗑 删除</div>
+    <div class="menu-item" onclick="pasteNode()">📌 粘贴</div>
+  </div>
+  <div class="menu-item" onclick="pasteFromClipboard()">📋 剪贴板粘贴</div>
   <div class="menu-sep"></div>
   <div id="color-picker-row" class="color-picker-row" style="display:none"></div>
   <div class="menu-sep" id="color-sep" style="display:none;"></div>
@@ -1265,6 +1282,23 @@ class MindNode{
 }
 MindNode._nextId=1;
 
+function promoteRoot(newSibling,insertBefore){
+  const newRoot=new MindNode(currentFileName?currentFileName.replace(/\.txt$/,''):'根节点');
+  const oldRoot=root;
+  oldRoot._branchColor=pickBranchColor(null);
+  usedBranchColors.add(oldRoot._branchColor);
+  if(insertBefore){
+    newRoot.addChild(newSibling);
+    newRoot.addChild(oldRoot);
+  }else{
+    newRoot.addChild(oldRoot);
+    newRoot.addChild(newSibling);
+  }
+  newSibling._branchColor=pickBranchColor(oldRoot._branchColor);
+  usedBranchColors.add(newSibling._branchColor);
+  root=newRoot;
+  return newRoot;
+}
 function getLevel(node){let l=0,p=node.parent;while(p){l++;p=p.parent}return l}
 function getAncestorBranch(node){
   if(getLevel(node)<1)return null;
@@ -1665,18 +1699,22 @@ function addChild(){
 }
 
 function addSibling(){
-  if(!selectedNode||!selectedNode.parent){toast('根节点无法添加同级');return}
+  if(!selectedNode){toast('请先选择节点');return}
   const node=new MindNode('新节点');
   pushHistory();
-  selectedNode.parent.insertAfter(node,selectedNode);
-  const lvl=getLevel(node);
-  if(lvl>=1){
-    if(lvl===1){
-      node._branchColor=pickBranchColor(null);
-    } else {
-      node._branchColor=getNodeBranchColor(selectedNode);
+  if(!selectedNode.parent){
+    promoteRoot(node,false);
+  }else{
+    selectedNode.parent.insertAfter(node,selectedNode);
+    const lvl=getLevel(node);
+    if(lvl>=1){
+      if(lvl===1){
+        node._branchColor=pickBranchColor(null);
+      } else {
+        node._branchColor=getNodeBranchColor(selectedNode);
+      }
+      usedBranchColors.add(node._branchColor);
     }
-    usedBranchColors.add(node._branchColor);
   }
   rebuildMap();render();selectNode(node);startInlineEdit(node,true);
 }
@@ -1876,9 +1914,10 @@ function cutNode(){
   clipboardMode='cut';
   clipboardSourceNode=selectedNode;
   try{
-    const data=JSON.stringify({type:'mindmap-clipboard',mode:'cut',text:selectedNode.text,children:selectedNode.children.map(c=>serializeNode(c))});
-    navigator.clipboard.writeText(data).catch(()=>{});
+    localStorage.setItem('mindmap_internal_clipboard',JSON.stringify({mode:'cut',text:selectedNode.text,children:selectedNode.children.map(c=>serializeNode(c))}));
   }catch(e){}
+  const text=exportNodeTextClean(selectedNode,0).trimEnd();
+  navigator.clipboard.writeText(text).catch(()=>{});
   rebuildMap();render();updateClipInfo();
   toast('已剪切：'+clipboard.firstLine()+' (+'+clipboard.countDescendants()+')，粘贴后消失');
 }
@@ -1888,10 +1927,18 @@ function copyNode(){
   clipboard=cloneSubtree(selectedNode);
   clipboardMode='copy';updateClipInfo();
   try{
-    const data=JSON.stringify({type:'mindmap-clipboard',text:selectedNode.text,children:selectedNode.children.map(c=>serializeNode(c))});
-    navigator.clipboard.writeText(data).catch(()=>{});
+    localStorage.setItem('mindmap_internal_clipboard',JSON.stringify({text:selectedNode.text,children:selectedNode.children.map(c=>serializeNode(c))}));
   }catch(e){}
-  toast('已复制：'+clipboard.firstLine()+' (+'+clipboard.countDescendants()+')');
+  const text=exportNodeTextClean(selectedNode,0).trimEnd();
+  navigator.clipboard.writeText(text).then(()=>{
+    toast('已复制：'+clipboard.firstLine()+' (+'+clipboard.countDescendants()+')');
+  }).catch(()=>{
+    const ta=document.createElement('textarea');
+    ta.value=text;document.body.appendChild(ta);
+    ta.select();document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast('已复制：'+clipboard.firstLine()+' (+'+clipboard.countDescendants()+')');
+  });
 }
 
 function serializeNode(node){
@@ -1938,18 +1985,32 @@ function pasteNode(){
   if(!selectedNode){toast('请先选择目标节点');return}
   if(!clipboard){
     try{
-      navigator.clipboard.readText().then(text=>{
-        const data=JSON.parse(text);
-        if(data.type==='mindmap-clipboard'){
-          clipboard=deserializeNode(data);
-          clipboardMode=data.mode==='cut'?'cut':'copy';
-          doPaste();
-        }else{toast('剪贴板内容不是思维导图数据')}
-      }).catch(()=>{toast('剪贴板为空')});
-    }catch(e){toast('剪贴板为空')}
+      const stored=localStorage.getItem('mindmap_internal_clipboard');
+      if(stored){
+        const data=JSON.parse(stored);
+        clipboard=deserializeNode(data);
+        clipboardMode=data.mode==='cut'?'cut':'copy';
+        doPaste();
+      }else{toast('内部剪贴板为空')}
+    }catch(e){toast('内部剪贴板为空')}
     return;
   }
   doPaste();
+}
+
+function pasteFromClipboard(){
+  if(!selectedNode){toast('请先选择目标节点');return}
+  try{
+    navigator.clipboard.readText().then(text=>{
+      if(!text.trim()){toast('系统剪贴板为空');return}
+      pushHistory();
+      const parsed=parseText(text);
+      selectedNode.addChild(parsed);
+      if(selectedNode.collapsed)selectedNode.collapsed=false;
+      rebuildMap();render();
+      toast('已从剪贴板粘贴');
+    }).catch(()=>{toast('无法读取系统剪贴板')});
+  }catch(e){toast('无法读取系统剪贴板')}
 }
 
 function doPaste(){
@@ -1976,7 +2037,7 @@ function updateClipInfo(){
   el.textContent=mode+': '+clipboard.firstLine()+' (+'+clipboard.countDescendants()+')';
 }
 
-function showImport(){document.getElementById('import-modal').classList.add('show');document.getElementById('importText').focus()}
+function showImport(){document.getElementById('import-modal').classList.add('show');document.getElementById('newFileName').value='';document.getElementById('importText').value='';document.getElementById('newFileName').focus()}
 function closeImport(){document.getElementById('import-modal').classList.remove('show')}
 
 function getDefaultFileName(){
@@ -1994,20 +2055,19 @@ function createNewMap(){
 }
 
 function doImport(){
+  let fileName=document.getElementById('newFileName').value.trim();
+  if(!fileName){toast('请输入文件名');return}
+  if(!fileName.endsWith('.txt'))fileName+='.txt';
   const text=document.getElementById('importText').value;
   pushHistory();
   if(text.trim()){
     root=parseText(text);selectedNode=null;
   }else{
-    // 留空则创建默认结构
-    root=parseText(SAMPLE_TEXT);selectedNode=null;
-    (function collapseBelow(n,d){
-      if(d>=3&&n.children.length>0)n.collapsed=true;
-      for(const c of n.children)collapseBelow(c,d+1);
-    })(root,0);
+    const rootName=fileName.replace('.txt','');
+    root=parseText(rootName+'\n\t主题一\n\t主题二');
+    selectedNode=null;
   }
-  // 新建时自动生成文件名
-  currentFileName=getDefaultFileName();
+  currentFileName=fileName;
   const content=exportNodeText(root).trimEnd();
   saveFileData(currentFileName,content);
   localStorage.setItem('mindmap_data',content);
@@ -2934,13 +2994,33 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
     if(getLevel(selectedNode)>=1){
       colorRow.style.display='flex';colorSep.style.display='block';colorRow.innerHTML='';
       const currentColor=getNodeBranchColor(selectedNode);
-      for(const c of BRANCH_COLORS){
+      for(let i=0;i<4&&i<BRANCH_COLORS.length;i++){
+        const c=BRANCH_COLORS[i];
         const sw=document.createElement('div');
         sw.className='color-swatch'+(c===currentColor?' selected':'');
         sw.style.background=c;
         sw.onclick=function(){pushHistory();setUserColor(selectedNode,c);rebuildMap();render()};
         colorRow.appendChild(sw);
       }
+      const toggle=document.createElement('div');
+      toggle.className='color-toggle';
+      toggle.textContent='+';
+      const extraDiv=document.createElement('div');
+      extraDiv.className='color-extra';
+      for(let i=4;i<BRANCH_COLORS.length;i++){
+        const c=BRANCH_COLORS[i];
+        const sw=document.createElement('div');
+        sw.className='color-swatch'+(c===currentColor?' selected':'');
+        sw.style.background=c;
+        sw.onclick=function(){pushHistory();setUserColor(selectedNode,c);rebuildMap();render()};
+        extraDiv.appendChild(sw);
+      }
+      toggle.onclick=function(){
+        const expanded=extraDiv.classList.toggle('expanded');
+        toggle.textContent=expanded?'−':'+';
+      };
+      colorRow.appendChild(toggle);
+      colorRow.appendChild(extraDiv);
     }else{colorRow.style.display='none';colorSep.style.display='none'}
     e.stopPropagation();
     return;
@@ -3046,9 +3126,9 @@ svgEl.addEventListener('mousemove',function(e){
     if(target&&target!==dragNode&&!dragNode.isDescendantOf(target)){
       dropTarget=target;
       const relY=(pt.y-target.y)/(target.height/2);
-      if(relY<-0.4&&target.parent){
+      if(relY<-0.25&&(target.parent||target===root)){
         dropAction='before';
-      }else if(relY>0.4&&target.parent){
+      }else if(relY>0.25&&(target.parent||target===root)){
         dropAction='after';
       }else{
         dropAction='child';
@@ -3129,17 +3209,27 @@ svgEl.addEventListener('mouseup',function(e){
         if(dropTarget.collapsed)dropTarget.collapsed=false;
         toast('已移入：'+dropTarget.firstLine()+' (+'+dragNode.countDescendants()+')');
       }else if(dropAction==='before'){
-        const p=dropTarget.parent;
-        const idx=p.children.indexOf(dropTarget);
-        p.children.splice(idx,0,dragNode);
-        dragNode.parent=p;
-        toast('已插入：'+dropTarget.firstLine()+' 前方');
+        if(!dropTarget.parent&&dropTarget===root){
+          promoteRoot(dragNode,true);
+          toast('已插入：'+dropTarget.firstLine()+' 前方（自动创建新顶级）');
+        }else{
+          const p=dropTarget.parent;
+          const idx=p.children.indexOf(dropTarget);
+          p.children.splice(idx,0,dragNode);
+          dragNode.parent=p;
+          toast('已插入：'+dropTarget.firstLine()+' 前方');
+        }
       }else{
-        const p=dropTarget.parent;
-        const idx=p.children.indexOf(dropTarget);
-        p.children.splice(idx+1,0,dragNode);
-        dragNode.parent=p;
-        toast('已插入：'+dropTarget.firstLine()+' 后方');
+        if(!dropTarget.parent&&dropTarget===root){
+          promoteRoot(dragNode,false);
+          toast('已插入：'+dropTarget.firstLine()+' 后方（自动创建新顶级）');
+        }else{
+          const p=dropTarget.parent;
+          const idx=p.children.indexOf(dropTarget);
+          p.children.splice(idx+1,0,dragNode);
+          dragNode.parent=p;
+          toast('已插入：'+dropTarget.firstLine()+' 后方');
+        }
       }
       rebuildMap();
     }
@@ -3229,13 +3319,33 @@ svgEl.addEventListener('contextmenu',function(e){
       colorSep.style.display='block';
       colorRow.innerHTML='';
       const currentColor=getNodeBranchColor(node);
-      for(const c of BRANCH_COLORS){
+      for(let i=0;i<4&&i<BRANCH_COLORS.length;i++){
+        const c=BRANCH_COLORS[i];
         const sw=document.createElement('div');
         sw.className='color-swatch'+(c===currentColor?' selected':'');
         sw.style.background=c;
         sw.onclick=function(){pushHistory();setUserColor(node,c);rebuildMap();render()};
         colorRow.appendChild(sw);
       }
+      const toggle=document.createElement('div');
+      toggle.className='color-toggle';
+      toggle.textContent='+';
+      const extraDiv=document.createElement('div');
+      extraDiv.className='color-extra';
+      for(let i=4;i<BRANCH_COLORS.length;i++){
+        const c=BRANCH_COLORS[i];
+        const sw=document.createElement('div');
+        sw.className='color-swatch'+(c===currentColor?' selected':'');
+        sw.style.background=c;
+        sw.onclick=function(){pushHistory();setUserColor(node,c);rebuildMap();render()};
+        extraDiv.appendChild(sw);
+      }
+      toggle.onclick=function(){
+        const expanded=extraDiv.classList.toggle('expanded');
+        toggle.textContent=expanded?'−':'+';
+      };
+      colorRow.appendChild(toggle);
+      colorRow.appendChild(extraDiv);
     } else {
       colorRow.style.display='none';
       colorSep.style.display='none';
@@ -3255,7 +3365,7 @@ document.addEventListener('keydown',function(e){
   if(ctrl&&e.key==='z'){e.preventDefault();undo();return}
   if(ctrl&&e.key==='y'){e.preventDefault();redo();return}
   if(ctrl&&e.key==='x'){e.preventDefault();cutNode();return}
-  if(ctrl&&e.key==='c'){e.preventDefault();copyNode();copyAsStructuredText();return}
+  if(ctrl&&e.key==='c'){e.preventDefault();copyNode();return}
   if(ctrl&&e.key==='v'){e.preventDefault();pasteNode();return}
   if(e.key==='Delete'||e.key==='Backspace'){if(selectedNode)deleteNode()}
   else if(e.key==='Tab'){e.preventDefault();addChild()}
@@ -3377,8 +3487,8 @@ svgEl.addEventListener('touchmove',function(e){
     if(target&&target!==dragNode&&!dragNode.isDescendantOf(target)){
       dropTarget=target;
       const relY=(pt.y-target.y)/(target.height/2);
-      if(relY<-0.4&&target.parent)dropAction='before';
-      else if(relY>0.4&&target.parent)dropAction='after';
+      if(relY<-0.25&&(target.parent||target===root))dropAction='before';
+      else if(relY>0.25&&(target.parent||target===root))dropAction='after';
       else dropAction='child';
     }else{dropTarget=null;dropAction='child'}
     render();
@@ -3435,15 +3545,25 @@ svgEl.addEventListener('touchend',function(e){
         if(dropTarget.collapsed)dropTarget.collapsed=false;
         toast('已移入：'+dropTarget.firstLine());
       }else if(dropAction==='before'){
-        const p=dropTarget.parent;
-        const idx=p.children.indexOf(dropTarget);
-        p.children.splice(idx,0,dragNode);dragNode.parent=p;
-        toast('已插入前方');
+        if(!dropTarget.parent&&dropTarget===root){
+          promoteRoot(dragNode,true);
+          toast('已插入前方（自动创建新顶级）');
+        }else{
+          const p=dropTarget.parent;
+          const idx=p.children.indexOf(dropTarget);
+          p.children.splice(idx,0,dragNode);dragNode.parent=p;
+          toast('已插入前方');
+        }
       }else{
-        const p=dropTarget.parent;
-        const idx=p.children.indexOf(dropTarget);
-        p.children.splice(idx+1,0,dragNode);dragNode.parent=p;
-        toast('已插入后方');
+        if(!dropTarget.parent&&dropTarget===root){
+          promoteRoot(dragNode,false);
+          toast('已插入后方（自动创建新顶级）');
+        }else{
+          const p=dropTarget.parent;
+          const idx=p.children.indexOf(dropTarget);
+          p.children.splice(idx+1,0,dragNode);dragNode.parent=p;
+          toast('已插入后方');
+        }
       }
       rebuildMap();
     }
