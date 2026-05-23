@@ -22,13 +22,29 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 #toolbar button.danger:hover{background:#fde8e8;border-color:#e74c3c}
 #toolbar .clip-info{font-size:10px;color:#999;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #toolbar .version-info{font-size:11px;color:#888;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0}
-#zoom-panel{position:fixed;left:8px;top:50%;transform:translateY(-50%);background:#fff;border:1px solid #ddd;border-radius:8px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:all .25s}
-#zoom-panel.collapsed{top:42px;transform:none;padding:4px;background:transparent;border:none;box-shadow:none;gap:0}
+#toolbar .toolbar-spacer{flex:1 1 auto;min-width:4px}
+#searchBox{position:relative;flex-shrink:0}
+#searchInput{padding:3px 8px;border:1px solid #ccc;border-radius:3px;font-size:11px;font-family:inherit;width:140px;outline:none;transition:border .2s,width .2s}
+#searchInput:focus{border-color:#4A90D9;width:200px}
+#searchNav{display:inline-flex;align-items:center;gap:1px;margin-left:2px}
+#searchCount{font-size:10px;color:#888;min-width:28px;text-align:center}
+.search-nav-btn{width:20px;height:20px;border:1px solid #ccc;border-radius:3px;background:#fff;cursor:pointer;font-size:10px;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1;transition:all .15s}
+.search-nav-btn:hover{background:#e8f0fe;border-color:#4A90D9}
+.search-nav-btn:active{background:#d0e0f8}
+#searchResults{display:none;position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#fff;border:1px solid #ddd;border-radius:5px;box-shadow:0 4px 14px rgba(0,0,0,.15);max-height:260px;overflow-y:auto;z-index:500;min-width:180px;padding:4px 0}
+#searchResults.show{display:block}
+.search-item{padding:5px 12px;cursor:pointer;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#333}
+.search-item:hover{background:#e8f0fe;color:#4A90D9}
+.search-item .search-path{font-size:10px;color:#aaa;margin-left:6px}
+.search-empty{padding:8px 12px;font-size:12px;color:#999;text-align:center}
+#zoom-panel{position:fixed;left:8px;top:42px;background:#fff;border:1px solid #ddd;border-radius:8px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:box-shadow .25s,padding .25s}
+#zoom-panel.collapsed{padding:0;background:transparent;border:none;box-shadow:none;gap:0}
 #zoom-panel.collapsed .zoom-panel-inner{display:none}
 #zoom-panel button{width:32px;height:32px;border:1px solid #ccc;border-radius:5px;background:#fff;cursor:pointer;font-size:15px;font-family:inherit;transition:all .15s;display:flex;align-items:center;justify-content:center;padding:0}
 #zoom-panel button:hover{background:#e8f0fe;border-color:#4A90D9}
 #zoom-panel button:active{background:#d0e0f8}
 #zoom-panel .toggle-btn{width:28px;height:28px;font-size:13px;border-radius:50%;display:flex}
+#zoom-panel.collapsed .toggle-btn{width:32px;height:32px;font-size:15px;border:1px solid #ccc;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.1)}
 #zoom-panel .zoom-info{font-size:10px;color:#666;text-align:center;line-height:1.2;padding:2px 0;min-width:32px}
 #zoom-panel .zoom-sep{width:24px;height:1px;background:#ddd;margin:2px 0}
 .dropdown{position:relative;display:inline-block}
@@ -105,6 +121,9 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   <button onclick="undo()" title="撤销 (Ctrl+Z)">↩</button>
   <button onclick="redo()" title="重做 (Ctrl+Y)">↪</button>
   <div class="sep"></div>
+  <button onclick="collapseAll()">折叠</button>
+  <button onclick="expandAll()">展开</button>
+  <div class="sep"></div>
   <button onclick="addSibling()" title="添加同级节点 (Enter)">+ 同级</button>
   <button onclick="addChild()" title="添加子级节点 (Tab)">+ 子级</button>
   <div class="sep"></div>
@@ -119,14 +138,21 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
       <div class="dropdown-item" onclick="closeDropdown();pasteNode()">📌 粘贴</div>
     </div>
   </div>
-  <span class="clip-info" id="clipInfo"></span>
   <div class="sep"></div>
   <button onclick="createNewMap()">+ 新建</button>
   <button onclick="openFileManagerFrame()">📁 文件</button>
   <button onclick="syncCurrentFile()" id="syncBtn" title="同步当前文件到云端">☁ 同步</button>
+  <div class="toolbar-spacer"></div>
+  <div id="searchBox">
+    <input type="text" id="searchInput" placeholder="搜索标签..." oninput="onSearchInput()" onkeydown="onSearchKeydown(event)">
+    <span id="searchNav" style="display:none">
+      <span id="searchCount"></span>
+      <button class="search-nav-btn" onclick="searchPrev()" title="上一个 (Shift+Enter)">▲</button>
+      <button class="search-nav-btn" onclick="searchNext()" title="下一个 (Enter)">▼</button>
+    </span>
+    <div id="searchResults"></div>
+  </div>
   <span id="versionInfo" class="version-info"></span>
-  <button onclick="collapseAll()">折叠</button>
-  <button onclick="expandAll()">展开</button>
   <input type="file" id="fileInput" accept=".txt" style="display:none" onchange="handleFile(event)">
 </div>
 <div id="zoom-panel">
@@ -2056,10 +2082,9 @@ function doPaste(){
 }
 
 function updateClipInfo(){
-  const el=document.getElementById('clipInfo');
-  if(!clipboard){el.textContent='';return}
+  if(!clipboard)return;
   const mode=clipboardMode==='cut'?'剪切':'复制';
-  el.textContent=mode+': '+clipboard.firstLine()+' (+'+clipboard.countDescendants()+')';
+  toast(mode+': '+clipboard.firstLine()+' (+'+clipboard.countDescendants()+')');
 }
 
 function showImport(){document.getElementById('import-modal').classList.add('show');document.getElementById('newFileName').value='';document.getElementById('importText').value='';document.getElementById('newFileName').focus()}
@@ -2938,8 +2963,126 @@ function scheduleAutoSave(){
 
 function toast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
-  clearTimeout(toast._timer);toast._timer=setTimeout(()=>t.classList.remove('show'),2000);
+  clearTimeout(toast._timer);toast._timer=setTimeout(()=>t.classList.remove('show'),1000);
 }
+
+let _searchResultNodes=[];
+let _searchResultIdx=-1;
+
+function _collectAllNodes(node,list){
+  if(!node)return;
+  list.push(node);
+  for(const c of node.children)_collectAllNodes(c,list);
+}
+
+function _updateSearchNav(){
+  const nav=document.getElementById('searchNav');
+  const countEl=document.getElementById('searchCount');
+  if(!_searchResultNodes.length){nav.style.display='none';return}
+  nav.style.display='inline-flex';
+  if(_searchResultIdx<0)_searchResultIdx=0;
+  countEl.textContent=(_searchResultIdx+1)+'/'+_searchResultNodes.length;
+}
+
+function onSearchInput(){
+  const box=document.getElementById('searchResults');
+  const kw=document.getElementById('searchInput').value.trim();
+  if(!kw||!root){box.classList.remove('show');box.innerHTML='';_searchResultNodes=[];_searchResultIdx=-1;_updateSearchNav();return}
+  const all=[];
+  _collectAllNodes(root,all);
+  const lower=kw.toLowerCase();
+  const matched=all.filter(n=>n.text.toLowerCase().includes(lower));
+  _searchResultNodes=matched;
+  _searchResultIdx=matched.length?0:-1;
+  if(!matched.length){
+    box.innerHTML='<div class="search-empty">无匹配标签</div>';
+    box.classList.add('show');
+    _updateSearchNav();
+    return;
+  }
+  box.innerHTML=matched.map((n,i)=>{
+    const path=_getNodeBreadcrumb(n);
+    return `<div class="search-item" data-idx="${i}" onmousedown="jumpToSearchResult(${i})">${n.firstLine()}<span class="search-path">${path}</span></div>`;
+  }).join('');
+  box.classList.add('show');
+  _highlightSearchItem();
+  _updateSearchNav();
+}
+
+function _getNodeBreadcrumb(node){
+  const parts=[];
+  let p=node;
+  while(p){parts.unshift(p.firstLine());p=p.parent}
+  return parts.slice(0,-1).join(' > ');
+}
+
+function _goToSearchResult(idx){
+  if(!_searchResultNodes.length)return;
+  _searchResultIdx=idx;
+  const node=_searchResultNodes[idx];
+  _expandAncestors(node);
+  rebuildMap();render();
+  selectNode(node);
+  centerOnNode(node);
+  _highlightSearchItem();
+  _updateSearchNav();
+}
+
+function jumpToSearchResult(idx){
+  _goToSearchResult(idx);
+  document.getElementById('searchResults').classList.remove('show');
+  document.getElementById('searchInput').value='';
+  _searchResultNodes=[];_searchResultIdx=-1;
+  _updateSearchNav();
+}
+
+function searchNext(){
+  if(!_searchResultNodes.length)return;
+  _searchResultIdx=(_searchResultIdx+1)%_searchResultNodes.length;
+  _goToSearchResult(_searchResultIdx);
+}
+
+function searchPrev(){
+  if(!_searchResultNodes.length)return;
+  _searchResultIdx=(_searchResultIdx-1+_searchResultNodes.length)%_searchResultNodes.length;
+  _goToSearchResult(_searchResultIdx);
+}
+
+function _expandAncestors(node){
+  let p=node.parent;
+  while(p){
+    if(p.collapsed)p.collapsed=false;
+    p=p.parent;
+  }
+}
+
+function onSearchKeydown(e){
+  if(e.key==='Enter'){
+    e.preventDefault();
+    if(!_searchResultNodes.length)return;
+    if(e.shiftKey){searchPrev()}else{searchNext()}
+  }else if(e.key==='Escape'){
+    document.getElementById('searchResults').classList.remove('show');
+    document.getElementById('searchInput').blur();
+  }
+}
+
+function _highlightSearchItem(){
+  const items=document.querySelectorAll('#searchResults .search-item');
+  items.forEach((el,i)=>{
+    el.style.background=i===_searchResultIdx?'#e8f0fe':'';
+    el.style.color=i===_searchResultIdx?'#4A90D9':'';
+  });
+  const active=items[_searchResultIdx];
+  if(active)active.scrollIntoView({block:'nearest'});
+}
+
+document.addEventListener('click',function(e){
+  const sb=document.getElementById('searchBox');
+  if(sb&&!sb.contains(e.target)){
+    document.getElementById('searchResults').classList.remove('show');
+  }
+});
 
 function svgPoint(e){
   const svg=document.getElementById('canvas');
@@ -3176,6 +3319,10 @@ svgEl.addEventListener('mousemove',function(e){
       }else{
         dropAction='child';
       }
+    }else if(target&&target!==dragNode&&dragNode.isDescendantOf(target)){
+      dropTarget=target;
+      const relY=(pt.y-target.y)/(target.height/2);
+      dropAction=relY<0?'before':'after';
     }else{
       dropTarget=null;dropAction='child';
     }
@@ -3413,6 +3560,7 @@ document.addEventListener('keydown',function(e){
   if(ctrl&&e.key==='x'){e.preventDefault();cutNode();return}
   if(ctrl&&e.key==='c'){e.preventDefault();copyNode();return}
   if(ctrl&&e.key==='v'){e.preventDefault();pasteNode();return}
+  if(ctrl&&e.key==='f'){e.preventDefault();document.getElementById('searchInput').focus();return}
   if(e.key==='Delete'||e.key==='Backspace'){if(selectedNode)deleteNode()}
   else if(e.key==='Tab'){e.preventDefault();addChild()}
   else if(e.key==='Enter'){e.preventDefault();addSibling()}
@@ -3536,6 +3684,10 @@ svgEl.addEventListener('touchmove',function(e){
       if(relY<-0.25&&(target.parent||target===root))dropAction='before';
       else if(relY>0.25&&(target.parent||target===root))dropAction='after';
       else dropAction='child';
+    }else if(target&&target!==dragNode&&dragNode.isDescendantOf(target)){
+      dropTarget=target;
+      const relY=(pt.y-target.y)/(target.height/2);
+      dropAction=relY<0?'before':'after';
     }else{dropTarget=null;dropAction='child'}
     render();
     const world=document.getElementById('world');
