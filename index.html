@@ -31,12 +31,6 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 .search-nav-btn{width:20px;height:20px;border:1px solid #ccc;border-radius:3px;background:#fff;cursor:pointer;font-size:10px;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;padding:0;line-height:1;transition:all .15s}
 .search-nav-btn:hover{background:#e8f0fe;border-color:#4A90D9}
 .search-nav-btn:active{background:#d0e0f8}
-#searchResults{display:none;position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#fff;border:1px solid #ddd;border-radius:5px;box-shadow:0 4px 14px rgba(0,0,0,.15);max-height:260px;overflow-y:auto;z-index:500;min-width:180px;padding:4px 0}
-#searchResults.show{display:block}
-.search-item{padding:5px 12px;cursor:pointer;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#333}
-.search-item:hover{background:#e8f0fe;color:#4A90D9}
-.search-item .search-path{font-size:10px;color:#aaa;margin-left:6px}
-.search-empty{padding:8px 12px;font-size:12px;color:#999;text-align:center}
 #zoom-panel{position:fixed;left:8px;top:42px;background:#fff;border:1px solid #ddd;border-radius:8px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.1);transition:box-shadow .25s,padding .25s}
 #zoom-panel.collapsed{padding:0;background:transparent;border:none;box-shadow:none;gap:0}
 #zoom-panel.collapsed .zoom-panel-inner{display:none}
@@ -121,9 +115,6 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   <button onclick="undo()" title="撤销 (Ctrl+Z)">↩</button>
   <button onclick="redo()" title="重做 (Ctrl+Y)">↪</button>
   <div class="sep"></div>
-  <button onclick="collapseAll()">折叠</button>
-  <button onclick="expandAll()">展开</button>
-  <div class="sep"></div>
   <button onclick="addSibling()" title="添加同级节点 (Enter)">+ 同级</button>
   <button onclick="addChild()" title="添加子级节点 (Tab)">+ 子级</button>
   <div class="sep"></div>
@@ -150,7 +141,6 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
       <button class="search-nav-btn" onclick="searchPrev()" title="上一个 (Shift+Enter)">▲</button>
       <button class="search-nav-btn" onclick="searchNext()" title="下一个 (Enter)">▼</button>
     </span>
-    <div id="searchResults"></div>
   </div>
   <span id="versionInfo" class="version-info"></span>
   <input type="file" id="fileInput" accept=".txt" style="display:none" onchange="handleFile(event)">
@@ -162,7 +152,10 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
     <div class="zoom-info" id="zoomInfo">100%</div>
     <button onclick="zoomOut()" title="缩小 (−)">−</button>
     <div class="zoom-sep"></div>
-    <button onclick="handleFitClick()" title="切换：适应全局 / 100%居中根标签">⊞</button>
+    <button onclick="collapseAll()" title="折叠全部">⊟</button>
+    <button onclick="expandAll()" title="展开全部">⊞</button>
+    <div class="zoom-sep"></div>
+    <button onclick="handleFitClick()" title="切换：适应全局 / 100%居中根标签">⊡</button>
     <button onclick="toggleFullscreen()" title="全屏 (F11)">⛶</button>
   </div>
 </div>
@@ -2985,35 +2978,15 @@ function _updateSearchNav(){
 }
 
 function onSearchInput(){
-  const box=document.getElementById('searchResults');
   const kw=document.getElementById('searchInput').value.trim();
-  if(!kw||!root){box.classList.remove('show');box.innerHTML='';_searchResultNodes=[];_searchResultIdx=-1;_updateSearchNav();return}
+  if(!kw||!root){_searchResultNodes=[];_searchResultIdx=-1;_updateSearchNav();return}
   const all=[];
   _collectAllNodes(root,all);
   const lower=kw.toLowerCase();
-  const matched=all.filter(n=>n.text.toLowerCase().includes(lower));
-  _searchResultNodes=matched;
-  _searchResultIdx=matched.length?0:-1;
-  if(!matched.length){
-    box.innerHTML='<div class="search-empty">无匹配标签</div>';
-    box.classList.add('show');
-    _updateSearchNav();
-    return;
-  }
-  box.innerHTML=matched.map((n,i)=>{
-    const path=_getNodeBreadcrumb(n);
-    return `<div class="search-item" data-idx="${i}" onmousedown="jumpToSearchResult(${i})">${n.firstLine()}<span class="search-path">${path}</span></div>`;
-  }).join('');
-  box.classList.add('show');
-  _highlightSearchItem();
+  _searchResultNodes=all.filter(n=>n.text.toLowerCase().includes(lower));
+  _searchResultIdx=_searchResultNodes.length?0:-1;
   _updateSearchNav();
-}
-
-function _getNodeBreadcrumb(node){
-  const parts=[];
-  let p=node;
-  while(p){parts.unshift(p.firstLine());p=p.parent}
-  return parts.slice(0,-1).join(' > ');
+  if(_searchResultNodes.length)_goToSearchResult(0);
 }
 
 function _goToSearchResult(idx){
@@ -3024,15 +2997,6 @@ function _goToSearchResult(idx){
   rebuildMap();render();
   selectNode(node);
   centerOnNode(node);
-  _highlightSearchItem();
-  _updateSearchNav();
-}
-
-function jumpToSearchResult(idx){
-  _goToSearchResult(idx);
-  document.getElementById('searchResults').classList.remove('show');
-  document.getElementById('searchInput').value='';
-  _searchResultNodes=[];_searchResultIdx=-1;
   _updateSearchNav();
 }
 
@@ -3062,27 +3026,9 @@ function onSearchKeydown(e){
     if(!_searchResultNodes.length)return;
     if(e.shiftKey){searchPrev()}else{searchNext()}
   }else if(e.key==='Escape'){
-    document.getElementById('searchResults').classList.remove('show');
     document.getElementById('searchInput').blur();
   }
 }
-
-function _highlightSearchItem(){
-  const items=document.querySelectorAll('#searchResults .search-item');
-  items.forEach((el,i)=>{
-    el.style.background=i===_searchResultIdx?'#e8f0fe':'';
-    el.style.color=i===_searchResultIdx?'#4A90D9':'';
-  });
-  const active=items[_searchResultIdx];
-  if(active)active.scrollIntoView({block:'nearest'});
-}
-
-document.addEventListener('click',function(e){
-  const sb=document.getElementById('searchBox');
-  if(sb&&!sb.contains(e.target)){
-    document.getElementById('searchResults').classList.remove('show');
-  }
-});
 
 function svgPoint(e){
   const svg=document.getElementById('canvas');
