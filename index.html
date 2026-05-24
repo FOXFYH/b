@@ -91,6 +91,9 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 #context-menu .menu-row{display:flex;gap:0}
 #context-menu .menu-row .menu-item{flex:1;justify-content:center;padding:4px 8px}
 #context-menu .menu-row .menu-item:not(:last-child){border-right:1px solid #eee}
+.bg-swatch{width:28px;height:28px;border-radius:5px;cursor:pointer;border:2px solid #ccc;flex-shrink:0;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.bg-swatch:hover{border-color:#333;transform:scale(1.1)}
+.bg-swatch.selected{border-color:#333;box-shadow:0 0 0 2px #4A90D9}
 .color-swatch{width:22px;height:22px;border-radius:4px;cursor:pointer;border:2px solid transparent;flex-shrink:0}
 .color-swatch:hover{border-color:#333}
 .color-swatch.selected{border-color:#333}
@@ -130,9 +133,9 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
     </div>
   </div>
   <div class="sep"></div>
-  <button onclick="createNewMap()">+ 新建</button>
-  <button onclick="openFileManagerFrame()">📁 文件</button>
   <button onclick="syncCurrentFile()" id="syncBtn" title="同步当前文件到云端">☁ 同步</button>
+  <button onclick="openFileManagerFrame()">📁 文件</button>
+  <button onclick="createNewMap()">+ 新建</button>
   <div class="toolbar-spacer"></div>
   <div id="searchBox">
     <input type="text" id="searchInput" placeholder="搜索标签..." oninput="onSearchInput()" onkeydown="onSearchKeydown(event)">
@@ -143,6 +146,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
     </span>
   </div>
   <span id="versionInfo" class="version-info"></span>
+  <button onclick="showHelp()" title="快捷键说明" style="padding:3px 6px;border:1px solid #ccc;border-radius:3px;background:#fff;cursor:pointer;font-size:11px;font-family:inherit">❓</button>
   <input type="file" id="fileInput" accept=".txt" style="display:none" onchange="handleFile(event)">
 </div>
 <div id="zoom-panel">
@@ -310,11 +314,36 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   </div>
   <div class="menu-item" onclick="pasteFromClipboard()">📋 剪贴板粘贴</div>
   <div class="menu-sep"></div>
+  <div id="bg-color-row" style="display:flex;align-items:center;gap:6px;padding:6px 10px"><span style="font-size:11px;color:#888;white-space:nowrap">底色</span></div>
+  <div class="menu-sep" id="bg-color-sep"></div>
   <div id="color-picker-row" class="color-picker-row" style="display:none"></div>
   <div class="menu-sep" id="color-sep" style="display:none;"></div>
   <div class="menu-item" onclick="toggleCollapse()">🔄 折叠/展开</div>
 </div>
 <div id="toast"></div>
+<div id="help-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:200;justify-content:center;align-items:center">
+  <div style="background:#fff;border-radius:10px;padding:20px 24px;width:420px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.2)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0;font-size:16px;color:#333">快捷操作</h3>
+      <span onclick="document.getElementById('help-modal').style.display='none'" style="cursor:pointer;font-size:18px;color:#999">✕</span>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;color:#444">
+      <tr><td style="padding:4px 8px;color:#888;white-space:nowrap">Enter</td><td>添加同级标签</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">Tab</td><td>添加子级标签</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">F2 / 双击</td><td>编辑标签</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">Delete</td><td>删除标签</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">空格</td><td>折叠/展开</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">Ctrl+Z / Y</td><td>撤销 / 重做</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">Ctrl+X / C / V</td><td>剪切 / 复制 / 粘贴</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">Ctrl+F</td><td>搜索标签</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">↑ ↓ ← →</td><td>方向键导航标签</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">+ / - / 0</td><td>放大 / 缩小 / 适应</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">F11</td><td>全屏</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">右键</td><td>操作菜单（含底色）</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">长按拖拽</td><td>移动标签位置</td></tr>
+    </table>
+  </div>
+</div>
 <script>
 if('serviceWorker' in navigator){const swCode='self.addEventListener("fetch",function(e){e.respondWith(fetch(e.request))})';const swBlob=new Blob([swCode],{type:'application/javascript'});const swUrl=URL.createObjectURL(swBlob);navigator.serviceWorker.register(swUrl).catch(()=>{})}
 const SVG_NS='http://www.w3.org/2000/svg';
@@ -1292,6 +1321,7 @@ class MindNode{
     this.displayLines=[];
     this.titleLineCount=0;
     this.customWidth=0;
+    this._bgColor='';
   }
   addChild(c){c.parent=this;this.children.push(c)}
   removeChild(c){const i=this.children.indexOf(c);if(i>=0){this.children.splice(i,1);c.parent=null}}
@@ -1378,7 +1408,9 @@ function wrapText(text,font,maxWidth){
 
 function parseText(text){
   MindNode._nextId=1;
-  // 兼容 \r\n, \r, \n 三种换行符
+  const marker='(以下开始为本思维导图模板说明，勿增删)';
+  const mi=text.indexOf(marker);
+  if(mi>=0)text=text.substring(0,mi);
   const lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
   const vRoot=new MindNode('__v__');
   const stack=[{node:vRoot,level:-1}];
@@ -1388,11 +1420,13 @@ function parseText(text){
     while(level<line.length&&line[level]==='\t')level++;
     const content=line.substring(level);
     const ti=content.indexOf('\t');
-    let nodeText,collapsed=false,customWidth=0,parsedColor=null;
+    let nodeText,collapsed=false,customWidth=0,parsedColor=null,parsedBgColor='';
     function parseTitle(raw){
       let s=raw.trim();
       const wm=s.match(/ ◆(\d+)$/);
       if(wm){customWidth=parseInt(wm[1]);s=s.slice(0,-wm[0].length)}
+      const bm=s.match(/ ■(\S+)$/);
+      if(bm){parsedBgColor=bm[1];s=s.slice(0,-bm[0].length)}
       const cm=s.match(/ ★([^ ]+)$/);
       if(cm){parsedColor=cm[1];s=s.slice(0,-cm[0].length)}
       if(s.endsWith('◈')){collapsed=true;s=s.slice(0,-1).trimEnd()}
@@ -1410,6 +1444,7 @@ function parseText(text){
     const node=new MindNode(nodeText);
     node.collapsed=collapsed;
     node.customWidth=customWidth;
+    if(parsedBgColor)node._bgColor=parsedBgColor;
     while(stack.length>1&&stack[stack.length-1].level>=level)stack.pop();
     stack[stack.length-1].node.addChild(node);
     if(parsedColor){
@@ -1429,16 +1464,20 @@ function exportNodeText(node,indent=0){
   const widthMark=node.customWidth>0?' ◆'+node.customWidth:'';
   const level=getLevel(node);
   const colorMark=(level>=1&&(node._branchColor||node._userColor))?' ★'+(node._userColor||node._branchColor):'';
+  const bgMark=node._bgColor?' ■'+node._bgColor:'';
   let line;
   if(nlIdx>=0){
-    const title=node.text.substring(0,nlIdx)+collapseMark+colorMark+widthMark;
+    const title=node.text.substring(0,nlIdx)+collapseMark+colorMark+bgMark+widthMark;
     const desc=node.text.substring(nlIdx+1).replace(/\n/g,'\\n');
     line='\t'.repeat(indent)+title+'\t'+desc;
   }else{
-    line='\t'.repeat(indent)+node.text+collapseMark+colorMark+widthMark;
+    line='\t'.repeat(indent)+node.text+collapseMark+colorMark+bgMark+widthMark;
   }
   let result=line+'\n';
   for(const c of node.children)result+=exportNodeText(c,indent+1);
+  if(indent===0){
+    result+='\n(以下开始为本思维导图模板说明，勿增删)\n缩进=层级(\\t)，标题后\\t描述，标记缀末尾：◈=子项已收起 ★连线色 ■标签底色 ◆宽，换行用\\n\n示例：\n根节点\n\t主题一 ★#e74c3c\n\t\t子项A ■#2980b9\n\t\t子项B ◈\n\t主题二 ★#2980b9\n\t\t子项C\t描述文本\n\t\t子项D ◆300 ★#f1c40f ■#e74c3c\n（所有模板尾部自带以上信息 导入时自动屏蔽）\n';
+  }
   return result;
 }
 
@@ -1596,7 +1635,7 @@ function renderNodes(node,container){
   rect.setAttribute('class','node-bg');
   rect.setAttribute('x',node.x);rect.setAttribute('y',node.y-node.height/2);
   rect.setAttribute('width',node.width);rect.setAttribute('height',node.height);
-  rect.setAttribute('rx','4');rect.setAttribute('fill','#e8e8e8');
+  rect.setAttribute('rx','4');rect.setAttribute('fill',node._bgColor||'#e8e8e8');
   g.appendChild(rect);
 
   const bar=document.createElementNS(SVG_NS,'rect');
@@ -1924,6 +1963,8 @@ function expandAll(){if(!root)return;pushHistory();function c(n){n.collapsed=fal
 function cloneSubtree(node){
   const n=new MindNode(node.text);
   n.collapsed=node.collapsed;
+  n.customWidth=node.customWidth;
+  n._bgColor=node._bgColor;
   for(const c of node.children)n.addChild(cloneSubtree(c));
   return n;
 }
@@ -1986,12 +2027,15 @@ function copyNode(){
 }
 
 function serializeNode(node){
-  return{text:node.text,collapsed:node.collapsed,children:node.children.map(c=>serializeNode(c))};
+  const d={text:node.text,collapsed:node.collapsed,children:node.children.map(c=>serializeNode(c))};
+  if(node._bgColor)d.bgColor=node._bgColor;
+  return d;
 }
 
 function deserializeNode(data){
   const n=new MindNode(data.text);
   n.collapsed=!!data.collapsed;
+  if(data.bgColor)n._bgColor=data.bgColor;
   if(data.children)for(const c of data.children)n.addChild(deserializeNode(c));
   return n;
 }
@@ -2433,6 +2477,7 @@ function openFileManagerFrame(){
   document.getElementById('fileNameInput').value=currentFileName||'';
   renderFileList();
   startSyncTimers();
+  refreshCloudList();
 }
 
 function showFileManager(){
@@ -2854,6 +2899,7 @@ async function syncAllFiles(){
   status.textContent=msg;
   btn.disabled=false;btn.textContent='☁️ 全部同步';
   setLastSyncTime(Date.now());
+  refreshCloudList();
   },'全部同步');
 }
 async function deleteNamedFile(name){
@@ -3118,6 +3164,20 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
     if(left<0)left=10;
     menu.style.left=left+'px';
     menu.style.top=top+'px';
+    const bgRow=document.getElementById('bg-color-row');
+    const bgSep=document.getElementById('bg-color-sep');
+    const bgLabel=bgRow.querySelector('span');
+    bgRow.innerHTML='';
+    if(bgLabel)bgRow.appendChild(bgLabel);
+    const bgColors=[{c:'#e8e8e8',l:'灰'},{c:'#e74c3c',l:'红'},{c:'#f1c40f',l:'黄'},{c:'#2980b9',l:'蓝'}];
+    bgColors.forEach(function(item){
+      const sw=document.createElement('div');
+      sw.className='bg-swatch'+(node._bgColor===item.c||(item.c==='#e8e8e8'&&!node._bgColor)?' selected':'');
+      sw.style.background=item.c;
+      sw.title=item.l;
+      sw.onclick=function(){pushHistory();node._bgColor=item.c==='#e8e8e8'?'':item.c;rebuildMap();render()};
+      bgRow.appendChild(sw);
+    });
     const colorRow=document.getElementById('color-picker-row');
     const colorSep=document.getElementById('color-sep');
     if(getLevel(selectedNode)>=1){
@@ -3164,6 +3224,8 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
   else if(action==='paste'){pasteNode()}
   else if(action==='delete'){deleteNode()}
 });
+
+function showHelp(){document.getElementById('help-modal').style.display='flex'}
 
 function toggleDropdown(){
   const m=document.getElementById('actionMenu');
@@ -3448,6 +3510,19 @@ svgEl.addEventListener('contextmenu',function(e){
     if(top<0)top=10;
     menu.style.left=left+'px';
     menu.style.top=top+'px';
+    const bgRow=document.getElementById('bg-color-row');
+    const bgLabel=bgRow.querySelector('span');
+    bgRow.innerHTML='';
+    if(bgLabel)bgRow.appendChild(bgLabel);
+    const bgColors=[{c:'#e8e8e8',l:'灰'},{c:'#e74c3c',l:'红'},{c:'#f1c40f',l:'黄'},{c:'#2980b9',l:'蓝'}];
+    bgColors.forEach(function(item){
+      const sw=document.createElement('div');
+      sw.className='bg-swatch'+(node._bgColor===item.c||(item.c==='#e8e8e8'&&!node._bgColor)?' selected':'');
+      sw.style.background=item.c;
+      sw.title=item.l;
+      sw.onclick=function(){pushHistory();node._bgColor=item.c==='#e8e8e8'?'':item.c;rebuildMap();render()};
+      bgRow.appendChild(sw);
+    });
     const colorRow=document.getElementById('color-picker-row');
     const colorSep=document.getElementById('color-sep');
     if(getLevel(node)>=1){
