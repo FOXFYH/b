@@ -151,16 +151,17 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 </div>
 <div id="zoom-panel">
   <button class="toggle-btn" onclick="toggleZoomPanel()" title="展开/收起">⚙</button>
-  <div class="zoom-panel-inner">
-    <button onclick="zoomIn()" title="放大 (+)">＋</button>
+  <div class="zoom-panel-inner" onmouseover="resetZoomPanelTimer()">
+    <button onclick="zoomIn();resetZoomPanelTimer()" title="放大 (+)">＋</button>
+    <button onclick="zoomOut();resetZoomPanelTimer()" title="缩小 (−)">−</button>
     <div class="zoom-info" id="zoomInfo">100%</div>
-    <button onclick="zoomOut()" title="缩小 (−)">−</button>
     <div class="zoom-sep"></div>
-    <button onclick="collapseAll()" title="折叠全部">⊟</button>
-    <button onclick="expandAll()" title="展开全部">⊞</button>
+    <button onclick="collapseAll();resetZoomPanelTimer()" title="折叠全部">⊟</button>
+    <button onclick="expandOneLevel();resetZoomPanelTimer()" title="向下展开一级">+1</button>
+    <button onclick="expandAll();resetZoomPanelTimer()" title="展开全部">⊞</button>
     <div class="zoom-sep"></div>
-    <button onclick="handleFitClick()" title="切换：适应全局 / 100%居中根标签">⊡</button>
-    <button onclick="toggleFullscreen()" title="全屏 (F11)">⛶</button>
+    <button onclick="handleFitClick();resetZoomPanelTimer()" id="fitBtn" title="切换：适应全局 / 100%居中根标签" style="font-size:11px;letter-spacing:-1px">全</button>
+    <button onclick="toggleFullscreen();resetZoomPanelTimer()" title="全屏 (F11)">⛶</button>
   </div>
 </div>
 <div id="viewport">
@@ -1722,12 +1723,15 @@ function fitScreen(){
 let fitViewMode='fit';
 function handleFitClick(){
   if(!root)return;
+  const btn=document.getElementById('fitBtn');
   if(fitViewMode==='fit'){
     fitViewMode='100';
     zoom100CenterRoot();
+    if(btn)btn.textContent='根';
   }else{
     fitViewMode='fit';
     fitScreen();
+    if(btn)btn.textContent='全';
   }
 }
 
@@ -1743,10 +1747,21 @@ function zoomOut(){zoom=Math.max(zoom/1.2,0.05);render()}
 
 let isFullscreen=false;
 let isZoomPanelCollapsed=true;
+let _zoomPanelTimer=null;
 function toggleZoomPanel(){
   const panel=document.getElementById('zoom-panel');
   isZoomPanelCollapsed=!isZoomPanelCollapsed;
   panel.classList.toggle('collapsed',isZoomPanelCollapsed);
+  if(!isZoomPanelCollapsed){resetZoomPanelTimer()}else{clearTimeout(_zoomPanelTimer)}
+}
+function resetZoomPanelTimer(){
+  clearTimeout(_zoomPanelTimer);
+  _zoomPanelTimer=setTimeout(function(){
+    if(!isZoomPanelCollapsed){
+      isZoomPanelCollapsed=true;
+      document.getElementById('zoom-panel').classList.add('collapsed');
+    }
+  },3000);
 }
 (function initZoomPanel(){
   const panel=document.getElementById('zoom-panel');
@@ -1958,6 +1973,7 @@ function toggleCollapse(){
 }
 
 function collapseAll(){if(!root)return;pushHistory();function c(n){if(n.children.length>0)n.collapsed=true;for(const ch of n.children)c(ch)}c(root);root.collapsed=false;rebuildMap();render();centerOnNode(selectedNode||root)}
+function expandOneLevel(){if(!root)return;pushHistory();function walk(n){if(n.collapsed){n.collapsed=false;for(const ch of n.children)ch.collapsed=true}else{for(const ch of n.children)walk(ch)}}walk(root);rebuildMap();render();centerOnNode(selectedNode||root)}
 function expandAll(){if(!root)return;pushHistory();function c(n){n.collapsed=false;for(const ch of n.children)c(ch)}c(root);rebuildMap();render();centerOnNode(selectedNode||root)}
 
 function cloneSubtree(node){
@@ -2573,13 +2589,12 @@ function openNamedFile(name){
   if(!fd){toast('文件不存在');return}
   pushHistory(false);
   root=parseText(fd.data);selectedNode=null;
-  if(fd.view){zoom=fd.view.zoom||1;panX=fd.view.panX||0;panY=fd.view.panY||0}
   currentFileName=name;
   localStorage.setItem('mindmap_data',fd.data);
   localStorage.setItem('mindmap_current_file',name);
   activeFileName=currentFileName;
   lastContentHash=getContentHash();
-  rebuildMap();render();updateTransform();
+  rebuildMap();render();fitScreen();
   renderFileList();
   toast('已打开：'+name);
   const meta=getFileMeta(name);
@@ -2593,13 +2608,12 @@ function openFileById(id){
   if(!fd){toast('文件不存在');return}
   pushHistory(false);
   root=parseText(fd.data);selectedNode=null;
-  if(fd.view){zoom=fd.view.zoom||1;panX=fd.view.panX||0;panY=fd.view.panY||0}
   currentFileName=f.name;
   localStorage.setItem('mindmap_data',fd.data);
   localStorage.setItem('mindmap_current_file',f.name);
   activeFileName=currentFileName;
   lastContentHash=getContentHash();
-  rebuildMap();render();updateTransform();
+  rebuildMap();render();fitScreen();
   renderFileList();
   toast('已打开：'+f.name);
   smartSyncOnOpen(f);
