@@ -322,6 +322,10 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   <div class="menu-item" onclick="toggleCollapse()">🔄 折叠/展开</div>
 </div>
 <div id="toast"></div>
+<script>
+document.getElementById('context-menu').addEventListener('touchstart',function(e){e.stopPropagation()},{passive:true});
+document.getElementById('context-menu').addEventListener('touchend',function(e){e.stopPropagation()},{passive:true});
+</script>
 <div id="help-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:200;justify-content:center;align-items:center">
   <div style="background:#fff;border-radius:10px;padding:20px 24px;width:420px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.2)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -1973,7 +1977,24 @@ function toggleCollapse(){
 }
 
 function collapseAll(){if(!root)return;pushHistory();function c(n){if(n.children.length>0)n.collapsed=true;for(const ch of n.children)c(ch)}c(root);root.collapsed=false;rebuildMap();render();centerOnNode(selectedNode||root)}
-function expandOneLevel(){if(!root)return;pushHistory();function walk(n){if(n.collapsed){n.collapsed=false;for(const ch of n.children)ch.collapsed=true}else{for(const ch of n.children)walk(ch)}}walk(root);rebuildMap();render();centerOnNode(selectedNode||root)}
+function expandOneLevel(){
+  if(!root)return;
+  var target=selectedNode||root;
+  if(!target)return;
+  pushHistory();
+  if(target.collapsed){
+    target.collapsed=false;
+    for(const ch of target.children)ch.collapsed=true;
+  }else{
+    for(const ch of target.children){
+      if(ch.collapsed){
+        ch.collapsed=false;
+        for(const gc of ch.children)gc.collapsed=true;
+      }
+    }
+  }
+  rebuildMap();render();centerOnNode(target);
+}
 function expandAll(){if(!root)return;pushHistory();function c(n){n.collapsed=false;for(const ch of n.children)c(ch)}c(root);rebuildMap();render();centerOnNode(selectedNode||root)}
 
 function cloneSubtree(node){
@@ -3169,6 +3190,7 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
     hideNodeQuickMenu();
     const menu=document.getElementById('context-menu');
     menu.style.display='block';
+    _contextMenuProtect=Date.now()+300;
     const menuWidth=menu.offsetWidth||140;
     const menuHeight=menu.offsetHeight||300;
     let left=qmRect.left;
@@ -3186,10 +3208,10 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
     const bgColors=[{c:'#e8e8e8',l:'灰'},{c:'#e74c3c',l:'红'},{c:'#f1c40f',l:'黄'},{c:'#2980b9',l:'蓝'}];
     bgColors.forEach(function(item){
       const sw=document.createElement('div');
-      sw.className='bg-swatch'+(node._bgColor===item.c||(item.c==='#e8e8e8'&&!node._bgColor)?' selected':'');
+      sw.className='bg-swatch'+(selectedNode._bgColor===item.c||(item.c==='#e8e8e8'&&!selectedNode._bgColor)?' selected':'');
       sw.style.background=item.c;
       sw.title=item.l;
-      sw.onclick=function(){pushHistory();node._bgColor=item.c==='#e8e8e8'?'':item.c;rebuildMap();render()};
+      sw.onclick=function(){pushHistory();selectedNode._bgColor=item.c==='#e8e8e8'?'':item.c;rebuildMap();render()};
       bgRow.appendChild(sw);
     });
     const colorRow=document.getElementById('color-picker-row');
@@ -3581,7 +3603,8 @@ svgEl.addEventListener('contextmenu',function(e){
   }else{hideContextMenu()}
 });
 
-document.addEventListener('click',function(e){if(!e.target.closest('#context-menu'))hideContextMenu()});
+var _contextMenuProtect=0;
+document.addEventListener('click',function(e){if(Date.now()<_contextMenuProtect)return;if(!e.target.closest('#context-menu')&&!e.target.closest('#node-quick-menu'))hideContextMenu()});
 
 document.addEventListener('keydown',function(e){
   if(document.getElementById('edit-modal').classList.contains('show')||
