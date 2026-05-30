@@ -105,7 +105,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;background:#fff;heig
 
 <script>
 const SYNC_CONFIG_KEY='mindmap_sync_config';
-const PRIMARY_API_URLS=['https://1408347752-dxgsapqrj.ap-guangzhou.tencentscf.com'];
+const PRIMARY_API_URLS=['https://1408347752-dxgsap4qrj.ap-guangzhou.tencentscf.com'];
 const FALLBACK_API_URLS=[];
 const DEFAULT_SYNC_CONFIG={enabled:true,apiUrl:PRIMARY_API_URLS[0],webhookUrl:'https://www.kdocs.cn/api/v3/ide/file/ctRsEvOpYZky/script/V2-1cf9aRSXUlNao8Qhjk4ATb/sync_task',token:'',autoSaveInterval:5,cloudCheckInterval:5,syncThreshold:5,sheetName:'自用脑图',retryCount:5,retryInterval:2};
 
@@ -139,6 +139,10 @@ function getSyncConfig(){
   if(!syncConfig){
     try{const saved=localStorage.getItem(SYNC_CONFIG_KEY);syncConfig=saved?JSON.parse(saved):{...DEFAULT_SYNC_CONFIG}}
     catch(e){syncConfig={...DEFAULT_SYNC_CONFIG}}
+  }
+  if(!syncConfig.apiUrl||!PRIMARY_API_URLS.includes(syncConfig.apiUrl)){
+    syncConfig.apiUrl=PRIMARY_API_URLS[0];
+    saveSyncConfig(syncConfig);
   }
   return syncConfig;
 }
@@ -250,7 +254,6 @@ function syncLocalFileName(localFile,cloudFileName){
   localFile.name=cloudFileName;
   if(oldName===currentFileName){
     currentFileName=cloudFileName;
-    localStorage.setItem('mindmap_current_file',cloudFileName);
   }
   return true;
 }
@@ -301,12 +304,16 @@ async function callCloudAPI(action,params={}){
   const allUrls=[...PRIMARY_API_URLS,...FALLBACK_API_URLS];
   const maxRetries=config.retryCount||5;
   const retryInterval=config.retryInterval||2;
+  const fetchTimeout=30000;
   for(const apiUrl of allUrls){
     let lastError=null;
     let lastIsNetworkError=true;
     for(let attempt=0;attempt<maxRetries;attempt++){
       try{
-        const response=await fetch(apiUrl,{method:'POST',headers,body:JSON.stringify(payload)});
+        const ctrl=new AbortController();
+        const tid=setTimeout(()=>ctrl.abort(),fetchTimeout);
+        const response=await fetch(apiUrl,{method:'POST',headers,body:JSON.stringify(payload),signal:ctrl.signal});
+        clearTimeout(tid);
         if(!response.ok)throw new Error('HTTP '+response.status);
         const dateHeader=response.headers.get('Date');
         if(dateHeader)_applyServerDate(dateHeader);
@@ -321,7 +328,11 @@ async function callCloudAPI(action,params={}){
         }else{
           lastError=new Error(r.message||JSON.stringify(r).slice(0,100)||'未知错误');lastIsNetworkError=true;
         }
-      }catch(error){lastError=error;lastIsNetworkError=true}
+      }catch(error){
+        if(error.name==='AbortError')lastError=new Error('请求超时('+fetchTimeout/1000+'秒)');
+        else lastError=error;
+        lastIsNetworkError=true;
+      }
       if(attempt<maxRetries-1)await new Promise(r=>setTimeout(r,retryInterval*1000));
     }
   }
@@ -1120,43 +1131,58 @@ async function refreshCloudList(){
   if(!config.enabled){toast('云同步未启用');return}
   const btn=document.getElementById('refreshCloudBtn');
   btn.disabled=true;btn.textContent='刷新中...';
-  const cloudResult=await callCloudAPI('读取全部');
-  cloudFileCache.clear();
-  if(cloudResult.status==='success'&&cloudResult.数据){
-    for(const cf of cloudResult.数据){
-      if(cf.ID&&cf.ID.trim()!==''){
-        cloudFileCache.set(cf.ID,{文件名:cf.文件名||'',版本号:cf.版本号||'0',文件夹路径:cf.文件夹路径||''});
+  try{
+    const cloudResult=await callCloudAPI('读取全部');
+    cloudFileCache.clear();
+    if(cloudResult.status==='success'&&cloudResult.数据){
+      for(const cf of cloudResult.数据){
+        if(cf.ID&&cf.ID.trim()!==''){
+          cloudFileCache.set(cf.ID,{文件名:cf.文件名||'',版本号:cf.版本号||'0',文件夹路径:cf.文件夹路径||''});
+        }
       }
+      const idx=getFileIndex();
+      let changed=false;
+      const cloudIds=new Set(cloudFileCache.keys());
+      const toDelete=[];
+      for(let i=idx.length-1;i>=0;i--){
+        const f=idx[i];
+        if(f.isNewFile)continue;
+        if(!cloudIds.has(f.id)){
+          toDelete.push(f.name);
+          idx.splice(i,1);
+          changed=true;
+        }
+      }
+      for(const name of toDelete){
+        const dIdx=getFileIndex();
+        const df=dIdx.find(x=>x.name===name);
+        if(df&&df.id)localStorage.removeItem('mindmap_file_id_'+df.id);
+        const newIdx=dIdx.filter(x=>x.name!==name);
+        setFileIndex(newIdx);
+      }
+      for(const f of idx){
+        if(f.isNewFile)continue;
+        const cloud=cloudFileCache.get(f.id);
+        if(cloud&&cloud.文件名&&cloud.文件名!==f.name){
+          syncLocalFileName(f,cloud.文件名);
+          changed=true;
+        }
+        if(cloud&&cloud.文件夹路径!==undefined&&(f.folder||'')!==cloud.文件夹路径){
+          f.folder=cloud.文件夹路径;
+          changed=true;
+        }
+      }
+      if(changed)setFileIndex(idx);
+    }else if(cloudResult.status!=='success'){
+      toast('云端刷新失败：'+(cloudResult.tongzhi||cloudResult.message||'未知错误'));
     }
-    const idx=getFileIndex();
-    let changed=false;
-    const cloudIds=new Set(cloudFileCache.keys());
-    for(let i=idx.length-1;i>=0;i--){
-      const f=idx[i];
-      if(f.isNewFile)continue;
-      if(!cloudIds.has(f.id)){
-        deleteFileData(f.name);
-        idx.splice(i,1);
-        changed=true;
-      }
-    }
-    for(const f of idx){
-      if(f.isNewFile)continue;
-      const cloud=cloudFileCache.get(f.id);
-      if(cloud&&cloud.文件名&&cloud.文件名!==f.name){
-        syncLocalFileName(f,cloud.文件名);
-        changed=true;
-      }
-      if(cloud&&cloud.文件夹路径!==undefined&&(f.folder||'')!==cloud.文件夹路径){
-        f.folder=cloud.文件夹路径;
-        changed=true;
-      }
-    }
-    if(changed)setFileIndex(idx);
+  }catch(e){
+    toast('云端刷新异常：'+e.message);
+  }finally{
+    btn.disabled=false;btn.textContent='刷新云端';
+    renderFileList();
+    if(cloudFileCache.size>0)toast('云端列表已刷新，共'+cloudFileCache.size+'个文件');
   }
-  btn.disabled=false;btn.textContent='刷新云端';
-  renderFileList();
-  toast('云端列表已刷新，共'+cloudFileCache.size+'个文件');
 }
 
 function showSyncSettings(){
@@ -1292,7 +1318,6 @@ async function renameCurrentFile(){
     setFileIndex(idx);
   }
   currentFileName=newName;
-  localStorage.setItem('mindmap_current_file',newName);
   updateSyncButton('☁️');
   notifyParent('fileRenamed',{oldName,newName});
   renderFileList();

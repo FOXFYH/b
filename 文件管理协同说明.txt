@@ -21,13 +21,13 @@
 2. 父→子：主页面通知文件管理
    发送方式：iframe.contentWindow.postMessage(消息对象, '*')
    接收方式：文件管理 window.addEventListener('message', function(e){...})
-   消息格式：{ target: 'fileManager', type: '消息类型', ...其他数据 }
+   消息格式：{ type: '消息类型', ...其他数据 }
 
 3. 关键注意事项
    - 子发消息前必须检查 window.parent !== window，否则非iframe环境会报错
    - 父发消息前必须确保 iframe 已加载（frame.contentWindow 存在）
    - 主页面接收消息时，通过 msg.type 判断消息类型，不要用 source 字段过滤
-   - 文件管理接收消息时，通过 msg.target==='fileManager' 过滤，只处理发给自己的
+   - 文件管理接收消息时，通过 msg.type 判断消息类型，兼容多种消息格式
 
 
 三、消息类型清单
