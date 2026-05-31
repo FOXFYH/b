@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -31,6 +31,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;background:#fff;heig
 </style>
 </head>
 <body>
+<div id="mainUI">
 <div class="header">
   <h3>📁 文件管理</h3>
   <div class="header-right">
@@ -52,6 +53,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;background:#fff;heig
   <button onclick="syncCurrentFile()" id="syncCurBtn" style="background:#4A90D9;color:#fff;border-color:#3a7bd5">☁️ 同步当前</button>
   <button onclick="syncAllFiles()" id="syncAllBtn">全部同步</button>
   <button onclick="refreshCloudList()" id="refreshCloudBtn">刷新云端</button>
+  <button onclick="createNewFile()" style="background:#27ae60;border-color:#1e8449;color:#fff">+ 新建</button>
   <button onclick="createFolder()" style="background:#f0c040;border-color:#d4a017;color:#333">新建文件夹</button>
   <button onclick="showMoveFileDialog()">移动到</button>
   <button onclick="deleteSelectedFile()">删除</button>
@@ -60,6 +62,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;background:#fff;heig
 </div>
 <div id="fileList"></div>
 <div id="fileSyncStatus"></div>
+</div>
 
 <div id="sync-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:200;justify-content:center;align-items:center">
   <div style="background:#fff;border-radius:10px;padding:14px 18px;width:400px;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,.2)">
@@ -70,7 +73,8 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;background:#fff;heig
       <div style="grid-column:1/-1"><label style="font-size:12px;margin-top:0">AirScript Token</label><input id="syncToken" type="text" placeholder="可选" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px"></div>
       <div><label style="font-size:12px;margin-top:0">保存间隔(秒)</label><input id="syncAutoSaveInterval" type="number" value="5" min="1" max="60" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px"></div>
       <div><label style="font-size:12px;margin-top:0">检查间隔(分)</label><input id="syncCloudCheckInterval" type="number" value="5" min="1" max="60" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px"></div>
-      <div><label style="font-size:12px;margin-top:0">同步差值</label><input id="syncThreshold" type="number" value="5" min="1" max="20" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px"></div>
+      <div><label style="font-size:12px;margin-top:0">同步差值</label><input id="syncThreshold" type="number" value="10" min="1" max="50" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px"></div>
+      <div><label style="font-size:12px;margin-top:0">差值同步间隔(秒)</label><input id="syncDeltaInterval" type="number" value="5" min="1" max="60" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px"></div>
       <div><label style="font-size:12px;margin-top:0">重试次数</label><input id="syncRetryCount" type="number" value="5" min="1" max="10" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px"></div>
       <div><label style="font-size:12px;margin-top:0">重试间隔(秒)</label><input id="syncRetryInterval" type="number" value="2" min="1" max="10" style="width:100%;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;margin-top:2px"></div>
       <div style="display:flex;align-items:center;gap:6px;grid-column:1/-1;margin-top:2px"><input id="syncEnabled" type="checkbox" checked><label for="syncEnabled" style="margin:0;font-size:12px">启用云同步</label></div>
@@ -89,12 +93,12 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;background:#fff;heig
     <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:12px;margin:10px 0">
       <div>本地版本：<span id="localVersion">-</span></div>
       <div>云端版本：<span id="cloudVersion">-</span></div>
+      <div>共同号：<span id="syncVersion">-</span> <span style="color:#999;font-size:10px">(上次同步一致版本)</span></div>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px" id="conflictBtns">
       <button onclick="closeSyncConflict()" style="padding:6px 18px;border-radius:5px;border:1px solid #ccc;background:#fff;cursor:pointer;font-family:inherit;font-size:13px">稍后处理</button>
       <button onclick="saveConflictVersion()" style="padding:6px 18px;border-radius:5px;border:1px solid #ccc;background:#fff;cursor:pointer;font-family:inherit;font-size:13px">新建冲突版本</button>
       <button id="btnOverwriteCloud" onclick="overwriteCloudWithLocal()" style="padding:6px 18px;border-radius:5px;border:1px solid #ccc;background:#fff;cursor:pointer;font-family:inherit;font-size:13px">用本地覆盖云端</button>
-      <button id="btnReverseOverwrite" onclick="reverseOverwriteCloud()" style="display:none;padding:6px 18px;border-radius:5px;border:1px solid #ccc;background:#fff;cursor:pointer;font-family:inherit;font-size:13px">反向覆盖云端</button>
       <button style="padding:6px 18px;border-radius:5px;border:1px solid #4A90D9;background:#4A90D9;color:#fff;cursor:pointer;font-family:inherit;font-size:13px" onclick="acceptCloudVersion()">使用云端版本</button>
     </div>
   </div>
@@ -107,7 +111,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;background:#fff;heig
 const SYNC_CONFIG_KEY='mindmap_sync_config';
 const PRIMARY_API_URLS=['https://1408347752-dxgsap4qrj.ap-guangzhou.tencentscf.com'];
 const FALLBACK_API_URLS=[];
-const DEFAULT_SYNC_CONFIG={enabled:true,apiUrl:PRIMARY_API_URLS[0],webhookUrl:'https://www.kdocs.cn/api/v3/ide/file/ctRsEvOpYZky/script/V2-1cf9aRSXUlNao8Qhjk4ATb/sync_task',token:'',autoSaveInterval:5,cloudCheckInterval:5,syncThreshold:5,sheetName:'自用脑图',retryCount:5,retryInterval:2};
+const DEFAULT_SYNC_CONFIG={enabled:true,apiUrl:PRIMARY_API_URLS[0],webhookUrl:'https://www.kdocs.cn/api/v3/ide/file/ctRsEvOpYZky/script/V2-1cf9aRSXUlNao8Qhjk4ATb/sync_task',token:'',autoSaveInterval:5,cloudCheckInterval:5,syncThreshold:10,syncDeltaInterval:5,sheetName:'自用脑图',retryCount:5,retryInterval:2};
 
 let syncConfig=null;
 let cloudFileCache=new Map();
@@ -122,6 +126,37 @@ let conflictContext='';
 let lastSyncTime=0;
 let _networkTime=null;
 let _networkTimeFetched=0;
+let autoSyncTimer=null;
+let autoSyncCheckTimer=null;
+let lastAutoSyncTime=0;
+let lastDeltaSyncTime=0;
+
+function syncCurrentFileFromLocal(){
+  const name=localStorage.getItem('mindmap_current_file')||'';
+  if(!name)return;
+  currentFileName=name;
+  const meta=getFileMeta(name);
+  if(meta&&meta.id){
+    const fd=loadFileDataById(meta.id);
+    if(fd&&fd.data)currentFileContent=fd.data;
+  }
+  if(!currentFileContent){
+    const fd=loadFileData(name);
+    if(fd&&fd.data)currentFileContent=fd.data;
+  }
+}
+
+function formatBeijingTime(ts){
+  const d=new Date(ts||Date.now());
+  const offset=d.getTimezoneOffset();
+  const bjTime=new Date(d.getTime()-offset*60000+8*3600000);
+  const pad=n=>String(n).padStart(2,'0');
+  return bjTime.getFullYear()+'-'+pad(bjTime.getMonth()+1)+'-'+pad(bjTime.getDate())+' '+pad(bjTime.getHours())+':'+pad(bjTime.getMinutes())+':'+pad(bjTime.getSeconds());
+}
+
+function getLastEditTime(){
+  return localStorage.getItem('mindmap_last_edit_time')||'';
+}
 
 function notifyParent(type,data){
   if(window.parent&&window.parent!==window){
@@ -144,6 +179,8 @@ function getSyncConfig(){
     syncConfig.apiUrl=PRIMARY_API_URLS[0];
     saveSyncConfig(syncConfig);
   }
+  if(syncConfig.syncDeltaInterval===undefined){syncConfig.syncDeltaInterval=DEFAULT_SYNC_CONFIG.syncDeltaInterval;saveSyncConfig(syncConfig)}
+  if(syncConfig.syncThreshold===undefined||syncConfig.syncThreshold<1){syncConfig.syncThreshold=DEFAULT_SYNC_CONFIG.syncThreshold;saveSyncConfig(syncConfig)}
   return syncConfig;
 }
 
@@ -352,8 +389,8 @@ async function findFileInCloudById(fileId){
     if(result.匹配数>0)return{file:result.数据[0],networkOk:true};
     return{file:null,networkOk:true};
   }
-  if(result.isNetworkError===false)return{file:null,networkOk:true};
-  return{file:null,networkOk:false};
+  if(result.isNetworkError)return{file:null,networkOk:false};
+  return{file:null,networkOk:true};
 }
 
 async function findFileInCloud(fileName){
@@ -441,6 +478,8 @@ function getFileSyncStatus(localFile){
 }
 
 function showAllSyncConflict(fileName,localVer,cloudVer){
+  document.getElementById('mainUI').style.display='none';
+  notifyParent('syncConflict',{cloudVer,context:'allSync',fileName});
   return new Promise(resolve=>{
     const modal=document.createElement('div');
     modal.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000';
@@ -452,7 +491,7 @@ function showAllSyncConflict(fileName,localVer,cloudVer){
       '<div style="display:flex;flex-direction:column;gap:8px">'+
       '<button id="syncOverwrite" style="padding:10px;border:none;border-radius:8px;background:#3498DB;color:#fff;cursor:pointer;font-size:14px">覆盖本地（用云端版本）</button>'+
       '<button id="syncConflict" style="padding:10px;border:none;border-radius:8px;background:#e67e22;color:#fff;cursor:pointer;font-size:14px">建立冲突版本+覆盖本地</button>'+
-      '<button id="syncReverse" style="padding:10px;border:none;border-radius:8px;background:#9b59b6;color:#fff;cursor:pointer;font-size:14px">反向覆盖云端（版本号+10）</button>'+
+      '<button id="syncReverse" style="padding:10px;border:none;border-radius:8px;background:#9b59b6;color:#fff;cursor:pointer;font-size:14px">用本地覆盖云端</button>'+
       '<button id="syncSkip" style="padding:10px;border:none;border-radius:8px;background:#95a5a6;color:#fff;cursor:pointer;font-size:14px">跳过此文件</button>'+
       '</div>';
     modal.appendChild(box);
@@ -465,31 +504,29 @@ function showAllSyncConflict(fileName,localVer,cloudVer){
 }
 
 function showSyncConflict(cloudVer,context){
-  document.getElementById('localVersion').textContent=getFileVersion(currentFileName);
+  syncCurrentFileFromLocal();
+  const localVer=getFileVersion(currentFileName);
+  const syncVer=getLastSyncVersion(currentFileName);
+  document.getElementById('localVersion').textContent=localVer;
   document.getElementById('cloudVersion').textContent=cloudVer;
+  document.getElementById('syncVersion').textContent=syncVer;
   conflictContext=context||'';
   const desc=document.getElementById('conflictDesc');
-  const lastSync=getLastSyncVersion(currentFileName);
-  const btnOverwrite=document.getElementById('btnOverwriteCloud');
-  const btnReverse=document.getElementById('btnReverseOverwrite');
   if(context==='upload'){
     desc.textContent='云端版本更高，如何处理？';
-    btnOverwrite.style.display='';
-    btnReverse.style.display='none';
   }else if(context==='download_has_edits'){
-    desc.textContent='本地有未同步编辑(上次同步v'+lastSync+')，云端版本更高，如何处理？';
-    btnOverwrite.style.display='';
-    btnReverse.style.display='';
+    desc.textContent='本地有未同步编辑(共同号v'+syncVer+')，云端版本更高，如何处理？';
   }else{
     desc.textContent='版本不一致，如何处理？';
-    btnOverwrite.style.display='';
-    btnReverse.style.display='none';
   }
   document.getElementById('sync-conflict-modal').style.display='flex';
+  document.getElementById('mainUI').style.display='none';
+  notifyParent('syncConflict',{cloudVer,context,fileName:currentFileName});
 }
 
 function closeSyncConflict(){
   document.getElementById('sync-conflict-modal').style.display='none';
+  document.getElementById('mainUI').style.display='';
   pendingCloudVersion=null;
   conflictContext='';
   if(conflictResolver){
@@ -497,45 +534,58 @@ function closeSyncConflict(){
     conflictResolver=null;
     r();
   }
+  notifyParent('conflictResolved');
 }
 
 async function acceptCloudVersion(){
-  const fileName=currentFileName||'';
-  const meta=getFileMeta(fileName);
-  const cloudResult=await findFileInCloudById(meta.id);
-  if(!cloudResult.networkOk){
-    toast('网络异常，无法获取云端文件');
+  try{
+    toast('正在获取云端版本...');
+    syncCurrentFileFromLocal();
+    const fileName=currentFileName||'';
+    if(!fileName){toast('无法接受：缺少文件名');closeSyncConflict();return}
+    const meta=getFileMeta(fileName);
+    const cloudResult=await findFileInCloudById(meta.id);
+    if(!cloudResult.networkOk){
+      toast('网络异常，无法获取云端文件');
+      closeSyncConflict();
+      return;
+    }
+    if(cloudResult.file){
+      const content=cloudResult.file.内容||'';
+      const cloudFileName=cloudResult.file.文件名||fileName;
+      const cloudVer=parseInt(cloudResult.file.版本号||'0');
+      const idx=getFileIndex();
+      const localEntry=idx.find(x=>x.id===meta.id);
+      const needRename=localEntry?syncLocalFileName(localEntry,cloudFileName):false;
+      if(needRename)setFileIndex(idx);
+      setFileVersion(currentFileName,cloudVer);
+      setLastSyncVersion(currentFileName,cloudVer);
+      clearNewFileFlag(meta.id);
+      saveFileData(currentFileName,content);
+      setLastSyncTime(Date.now());
+      currentFileContent=content;
+      notifyParent('fileContentUpdated',{name:currentFileName,content});
+      renderFileList();
+      toast('已更新为云端版本'+(needRename?' → '+cloudFileName:''));
+    }
     closeSyncConflict();
-    return;
+  }catch(e){
+    toast('接受云端版本异常：'+e.message);
+    closeSyncConflict();
   }
-  if(cloudResult.file){
-    const content=cloudResult.file.内容||'';
-    const cloudFileName=cloudResult.file.文件名||fileName;
-    const cloudVer=parseInt(cloudResult.file.版本号||'0');
-    const idx=getFileIndex();
-    const localEntry=idx.find(x=>x.id===meta.id);
-    const needRename=localEntry?syncLocalFileName(localEntry,cloudFileName):false;
-    if(needRename)setFileIndex(idx);
-    setFileVersion(currentFileName,cloudVer);
-    setLastSyncVersion(currentFileName,cloudVer);
-    clearNewFileFlag(meta.id);
-    saveFileData(currentFileName,content);
-    setLastSyncTime(Date.now());
-    currentFileContent=content;
-    notifyParent('fileContentUpdated',{name:currentFileName,content});
-    renderFileList();
-    toast('已更新为云端版本'+(needRename?' → '+cloudFileName:''));
-  }
-  closeSyncConflict();
 }
 
 async function saveConflictVersion(){
-  if(!currentFileName){closeSyncConflict();return}
+  try{
+    toast('正在创建冲突版本...');
+    syncCurrentFileFromLocal();
+    if(!currentFileName){closeSyncConflict();return}
   const netTime=await getNetworkTime();
-  const ts=new Date(netTime).toISOString().replace(/[-:T]/g,'').substring(0,14);
+  const ts=formatBeijingTime(netTime).replace(/[-: ]/g,'').substring(0,14);
   const conflictName=currentFileName.replace('.txt','')+'冲突版本'+ts+'.txt';
+  const originalFileName=currentFileName;
   const content=currentFileContent;
-  const oldMeta=getFileMeta(currentFileName);
+  const oldMeta=getFileMeta(originalFileName);
   const oldId=oldMeta.id;
   const newId=genFileId();
   const idx=getFileIndex();
@@ -553,13 +603,10 @@ async function saveConflictVersion(){
     localEntry.isNewFile=true;
     setFileIndex(idx);
   }
-  if(currentFileName!==conflictName){
-    currentFileName=conflictName;
-  }
   const newRow=await findFirstEmptyRow();
   const writeResult=await callCloudAPI('批量写入',{
     行号:newRow,
-    数据:{ID:newId,文件名:conflictName,内容:content,版本号:'1',文件夹路径:getFileMeta(conflictName).folder||'',最后上传发起时间:new Date(netTime).toISOString()}
+    数据:{ID:newId,文件名:conflictName,内容:content,版本号:'1',文件夹路径:getFileMeta(conflictName).folder||'',最后上传发起时间:formatBeijingTime(netTime),最后编辑时间:getLastEditTime()}
   });
   if(writeResult.status==='success'){
     setLastSyncTime(Date.now());
@@ -570,92 +617,78 @@ async function saveConflictVersion(){
   if(cloudResult.networkOk&&cloudResult.file){
     const cloudContent=cloudResult.file.内容||'';
     const cloudVer=parseInt(cloudResult.file.版本号||'0');
-    const cloudFileName=cloudResult.file.文件名||currentFileName.replace('冲突版本'+ts,'').replace('.txt','')+'.txt';
-    idx.push({name:cloudFileName,time:Date.now(),id:oldId,version:cloudVer,lastSyncVersion:cloudVer});
+    const cloudFileName=cloudResult.file.文件名||originalFileName;
+    const cloudFolder=cloudResult.file.文件夹路径||'';
+    const existingCloudLocal=idx.find(x=>x.id===oldId&&x.name!==conflictName);
+    if(!existingCloudLocal){
+      idx.push({name:cloudFileName,time:Date.now(),id:oldId,version:cloudVer,lastSyncVersion:cloudVer,folder:cloudFolder});
+    }else{
+      existingCloudLocal.version=cloudVer;
+      existingCloudLocal.lastSyncVersion=cloudVer;
+      if(cloudFileName!==existingCloudLocal.name)existingCloudLocal.name=cloudFileName;
+    }
     setFileIndex(idx);
     saveFileData(cloudFileName,cloudContent);
   }
+  currentFileName=conflictName;
+  currentFileContent=content;
+  localStorage.setItem('mindmap_current_file',conflictName);
+  notifyParent('openFile',{name:conflictName,content,id:newId});
   renderFileList();
-  toast('已创建冲突版本(新ID): '+conflictName);
+  toast('已创建冲突版本(新ID): '+conflictName+'，云端版本已下载到本地');
   closeSyncConflict();
+  }catch(e){
+    toast('创建冲突版本异常：'+e.message);
+    closeSyncConflict();
+  }
 }
 
 async function overwriteCloudWithLocal(){
-  const fileName=currentFileName||'';
-  const content=currentFileContent;
-  const localVer=getFileVersion(fileName);
-  const meta=getFileMeta(fileName);
-  const cloudVer=pendingCloudVersion||0;
-  const newVersion=Math.max(localVer,cloudVer);
-  const netTime=await getNetworkTime();
-  const cloudResult=await findFileInCloudById(meta.id);
-  if(!cloudResult.networkOk){
-    toast('网络异常，无法确认云端状态');
+  try{
+    toast('正在覆盖云端...');
+    syncCurrentFileFromLocal();
+    const fileName=currentFileName||'';
+    const content=currentFileContent;
+    if(!fileName||!content){toast('无法覆盖：缺少文件名或内容');closeSyncConflict();return}
+    const meta=getFileMeta(fileName);
+    const cloudVer=pendingCloudVersion||0;
+    const newVersion=cloudVer+10;
+    const netTime=await getNetworkTime();
+    const cloudResult=await findFileInCloudById(meta.id);
+    if(!cloudResult.networkOk){
+      toast('网络异常，无法确认云端状态');
+      closeSyncConflict();
+      return;
+    }
+    let writeResult;
+    if(cloudResult.file){
+      writeResult=await callCloudAPI('批量写入',{
+        行号:cloudResult.file._行号,
+        数据:{ID:meta.id,文件名:fileName,内容:content,版本号:newVersion.toString(),文件夹路径:meta.folder||'',最后上传发起时间:formatBeijingTime(netTime),最后编辑时间:getLastEditTime()}
+      });
+    }else{
+      const newRow=await findFirstEmptyRow();
+      writeResult=await callCloudAPI('批量写入',{
+        行号:newRow,
+        数据:{ID:meta.id,文件名:fileName,内容:content,版本号:newVersion.toString(),文件夹路径:meta.folder||'',最后上传发起时间:formatBeijingTime(netTime),最后编辑时间:getLastEditTime()}
+      });
+    }
+    if(writeResult.status==='success'){
+      setFileVersion(fileName,newVersion);
+      setLastSyncVersion(fileName,newVersion);
+      clearNewFileFlag(meta.id);
+      setLastSyncTime(Date.now());
+      toast('已用本地版本覆盖云端，版本: '+newVersion);
+    }else{
+      toast('覆盖云端失败：'+(writeResult.tongzhi||writeResult.message||'未知错误'));
+    }
     closeSyncConflict();
-    return;
+  }catch(e){
+    toast('覆盖云端异常：'+e.message);
+    closeSyncConflict();
   }
-  let writeResult;
-  if(cloudResult.file){
-    writeResult=await callCloudAPI('批量写入',{
-      行号:cloudResult.file._行号,
-      数据:{ID:meta.id,文件名:fileName,内容:content,版本号:newVersion.toString(),文件夹路径:meta.folder||'',最后上传发起时间:new Date(netTime).toISOString()}
-    });
-  }else{
-    const newRow=await findFirstEmptyRow();
-    writeResult=await callCloudAPI('批量写入',{
-      行号:newRow,
-      数据:{ID:meta.id,文件名:fileName,内容:content,版本号:newVersion.toString(),文件夹路径:meta.folder||'',最后上传发起时间:new Date(netTime).toISOString()}
-    });
-  }
-  if(writeResult.status==='success'){
-    setFileVersion(fileName,newVersion);
-    setLastSyncVersion(fileName,newVersion);
-    clearNewFileFlag(meta.id);
-    setLastSyncTime(Date.now());
-    toast('已用本地版本覆盖云端，版本: '+newVersion);
-  }else{
-    toast('覆盖云端失败：'+(writeResult.tongzhi||writeResult.message||'未知错误'));
-  }
-  closeSyncConflict();
 }
 
-async function reverseOverwriteCloud(){
-  const fileName=currentFileName||'';
-  const content=currentFileContent;
-  const meta=getFileMeta(fileName);
-  const cloudVer=pendingCloudVersion||0;
-  const netTime=await getNetworkTime();
-  const cloudResult=await findFileInCloudById(meta.id);
-  if(!cloudResult.networkOk){
-    toast('网络异常，无法确认云端状态');
-    closeSyncConflict();
-    return;
-  }
-  const newVer=cloudVer+10;
-  let writeResult;
-  if(cloudResult.file){
-    writeResult=await callCloudAPI('批量写入',{
-      行号:cloudResult.file._行号,
-      数据:{ID:meta.id,文件名:fileName,内容:content,版本号:newVer.toString(),文件夹路径:meta.folder||'',最后上传发起时间:new Date(netTime).toISOString()}
-    });
-  }else{
-    const newRow=await findFirstEmptyRow();
-    writeResult=await callCloudAPI('批量写入',{
-      行号:newRow,
-      数据:{ID:meta.id,文件名:fileName,内容:content,版本号:newVer.toString(),文件夹路径:meta.folder||'',最后上传发起时间:new Date(netTime).toISOString()}
-    });
-  }
-  if(writeResult.status==='success'){
-    setFileVersion(fileName,newVer);
-    setLastSyncVersion(fileName,newVer);
-    clearNewFileFlag(meta.id);
-    setLastSyncTime(Date.now());
-    toast('已反向覆盖云端，版本矫正为: '+newVer);
-  }else{
-    toast('反向覆盖失败：'+(writeResult.tongzhi||writeResult.message||'未知错误'));
-  }
-  closeSyncConflict();
-}
 
 function renderFileList(){
   const list=document.getElementById('fileList');
@@ -689,12 +722,16 @@ function renderFileList(){
     const active=f.name===currentFileName?' active':'';
     const enc=encodeURIComponent(f.name);
     const ver=f.version||0;
+    const syncVer=f.lastSyncVersion||0;
     const fid=f.id||'';
     const status=getFileSyncStatus(f);
     const statusHtml=cloudFileCache.size>0?`<span style="font-size:9px;color:${status.color}" title="${status.label}">${status.icon}</span> `:'';
     const folderInfo=(!currentFolder&&f.folder)?`<span style="font-size:9px;color:#b8860b">📁${f.folder}</span> `:'';
+    const cloud=cloudFileCache.get(fid);
+    const cloudVerStr=cloud?`<span style="color:#9b59b6">☁${cloud.版本号||0}</span>`:'<span style="color:#ccc">☁-</span>';
+    const verInfo=`<span style="font-size:9px;color:#999" title="本地v${ver} 共同v${syncVer}">${ver}</span><span style="font-size:9px;color:#aaa;margin:0 1px">/</span><span style="font-size:9px;color:#2ecc71" title="共同号(上次同步一致版本)">${syncVer}</span><span style="font-size:9px;color:#aaa;margin:0 1px">/</span>${cloudVerStr}`;
     return `<div class="file-item${active}" data-id="${fid}" data-name="${enc}">
-      <span class="file-name">📄 ${f.name} <span style="font-size:9px;color:#999">v${ver}</span> ${folderInfo}${statusHtml}</span>
+      <span class="file-name">📄 ${f.name} ${verInfo} ${folderInfo}${statusHtml}</span>
       <span class="file-time">${ts}</span>
       <span class="file-del" data-del="${fid}">✕</span>
     </div>`;
@@ -780,7 +817,7 @@ async function createFolder(){
     const newRow=await findFirstEmptyRow();
     const writeResult=await callCloudAPI('批量写入',{
       行号:newRow,
-      数据:{ID:folderId,文件名:'',内容:'',版本号:'0',文件夹路径:fullFolderName,最后上传发起时间:new Date(netTime).toISOString()}
+      数据:{ID:folderId,文件名:'',内容:'',版本号:'0',文件夹路径:fullFolderName,最后上传发起时间:formatBeijingTime(netTime)}
     });
     if(writeResult.status!=='success'){
       toast('云端创建文件夹失败：'+(writeResult.tongzhi||'未知错误'));
@@ -847,7 +884,7 @@ async function moveFileToFolder(fileId,folderName){
         const cf=cloudResult.file;
         const writeResult=await callCloudAPI('批量写入',{
           行号:cf._行号,
-          数据:{ID:fileId,文件名:cf.文件名||f.name,内容:cf.内容||'',版本号:cf.版本号||(f.version||0).toString(),文件夹路径:folderName,最后上传发起时间:new Date(netTime).toISOString()}
+          数据:{ID:fileId,文件名:cf.文件名||f.name,内容:cf.内容||'',版本号:cf.版本号||(f.version||0).toString(),文件夹路径:folderName,最后上传发起时间:formatBeijingTime(netTime),最后编辑时间:getLastEditTime()}
         });
         if(writeResult.status!=='success'){
           if(writeResult.isNetworkError){
@@ -1087,6 +1124,7 @@ function openFileById(id){
   renderFileList();
   toast('已打开：'+f.name);
   smartSyncOnOpen(f);
+  triggerOpenFileSync(f.name);
 }
 
 async function smartSyncOnOpen(localFile){
@@ -1173,6 +1211,10 @@ async function refreshCloudList(){
         }
       }
       if(changed)setFileIndex(idx);
+    }else if(cloudResult.status==='success'&&!cloudResult.数据){
+      cloudFileCache.clear();
+    }else if(cloudResult.isNetworkError){
+      toast('网络异常，云端刷新失败');
     }else if(cloudResult.status!=='success'){
       toast('云端刷新失败：'+(cloudResult.tongzhi||cloudResult.message||'未知错误'));
     }
@@ -1192,7 +1234,8 @@ function showSyncSettings(){
   document.getElementById('syncToken').value=config.token||'';
   document.getElementById('syncAutoSaveInterval').value=config.autoSaveInterval||5;
   document.getElementById('syncCloudCheckInterval').value=config.cloudCheckInterval||5;
-  document.getElementById('syncThreshold').value=config.syncThreshold||5;
+  document.getElementById('syncThreshold').value=config.syncThreshold||10;
+  document.getElementById('syncDeltaInterval').value=config.syncDeltaInterval||5;
   document.getElementById('syncRetryCount').value=config.retryCount||5;
   document.getElementById('syncRetryInterval').value=config.retryInterval||2;
   document.getElementById('syncEnabled').checked=config.enabled!==false;
@@ -1214,7 +1257,8 @@ function saveSyncSettings(){
     token:document.getElementById('syncToken').value.trim(),
     autoSaveInterval:autoSaveInterval,
     cloudCheckInterval:cloudCheckInterval,
-    syncThreshold:parseInt(document.getElementById('syncThreshold').value)||5,
+    syncThreshold:parseInt(document.getElementById('syncThreshold').value)||10,
+    syncDeltaInterval:parseInt(document.getElementById('syncDeltaInterval').value)||5,
     retryCount:parseInt(document.getElementById('syncRetryCount').value)||5,
     retryInterval:parseInt(document.getElementById('syncRetryInterval').value)||2,
     sheetName:'自用脑图'
@@ -1222,6 +1266,7 @@ function saveSyncSettings(){
   saveSyncConfig(config);
   closeSyncSettings();
   toast('同步设置已保存');
+  startAutoSync();
   notifyParent('syncSettingsChanged',config);
 }
 
@@ -1294,7 +1339,7 @@ async function renameCurrentFile(){
       const netTime=await getNetworkTime();
       const result=await callCloudAPI('批量写入',{
         行号:cloudResult.file._行号,
-        数据:{ID:meta.id,文件名:newName,文件夹路径:meta.folder||'',最后上传发起时间:new Date(netTime).toISOString()}
+        数据:{ID:meta.id,文件名:newName,文件夹路径:meta.folder||'',最后上传发起时间:formatBeijingTime(netTime)}
       });
       if(result.status!=='success'){
         if(result.isNetworkError){
@@ -1352,7 +1397,7 @@ async function copyCurrentFile(){
     const newRow=await findFirstEmptyRow();
     const result=await callCloudAPI('批量写入',{
       行号:newRow,
-      数据:{ID:copyId,文件名:copyName,内容:content,版本号:'1',文件夹路径:getFileMeta(copyName).folder||'',最后上传发起时间:new Date(netTime).toISOString()}
+      数据:{ID:copyId,文件名:copyName,内容:content,版本号:'1',文件夹路径:getFileMeta(copyName).folder||'',最后上传发起时间:formatBeijingTime(netTime),最后编辑时间:getLastEditTime()}
     });
     if(result.status==='success'){
       setLastSyncVersion(copyName,1);
@@ -1411,7 +1456,7 @@ function handleFileImport(e){
         currentFileContent=content;
         notifyParent('openFile',{name:fileName,content,id:existing.id});
         await uploadCurrentFile();
-        toast('已更新：'+fileName+' v'+existing.version);
+        toast('已更新：'+fileName+' v'+existing.version+'（可撤销）');
       }else if(choice==='newfile'){
         const baseName=fileName.replace('.txt','');
         let newName=baseName+'_导入.txt';
@@ -1460,14 +1505,148 @@ function exportText(){
   a.download=currentFileName||'思维导图.txt';a.click();URL.revokeObjectURL(a.href);toast('已导出');
 }
 
+async function createNewFile(){
+  const modal=document.createElement('div');
+  modal.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000';
+  const box=document.createElement('div');
+  box.style.cssText='background:#fff;border-radius:12px;padding:24px;max-width:380px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.3)';
+  box.innerHTML='<h3 style="margin:0 0 16px;font-size:16px;color:#333">新建思维导图</h3>'+
+    '<label style="display:block;font-size:13px;color:#555;margin-bottom:4px">文件名</label>'+
+    '<input id="newFileFileName" type="text" placeholder="输入文件名" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;box-sizing:border-box;margin-bottom:12px">'+
+    '<label style="display:block;font-size:13px;color:#555;margin-bottom:4px">根标签名</label>'+
+    '<input id="newFileRootLabel" type="text" placeholder="输入根标签名" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;box-sizing:border-box;margin-bottom:16px">'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end">'+
+    '<button id="newFileCancel" style="padding:8px 18px;border:1px solid #ddd;border-radius:6px;background:#f5f5f5;cursor:pointer;font-size:13px">取消</button>'+
+    '<button id="newFileConfirm" style="padding:8px 18px;border:none;border-radius:6px;background:#27ae60;color:#fff;cursor:pointer;font-size:13px">创建</button></div>';
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+  const nameInput=box.querySelector('#newFileFileName');
+  const labelInput=box.querySelector('#newFileRootLabel');
+  nameInput.focus();
+  nameInput.onkeydown=function(e){if(e.key==='Enter'){labelInput.focus()}if(e.key==='Escape'){document.body.removeChild(modal)}};
+  labelInput.onkeydown=function(e){if(e.key==='Enter'){box.querySelector('#newFileConfirm').click()}if(e.key==='Escape'){document.body.removeChild(modal)}};
+  box.querySelector('#newFileCancel').onclick=()=>{document.body.removeChild(modal)};
+  box.querySelector('#newFileConfirm').onclick=async()=>{
+    let fileName=nameInput.value.trim();
+    const rootLabel=labelInput.value.trim()||'新主题';
+    document.body.removeChild(modal);
+    if(!fileName){toast('请输入文件名');return}
+    if(!fileName.endsWith('.txt'))fileName+='.txt';
+    const idx=getFileIndex();
+    if(idx.find(x=>x.name===fileName)){toast('同名文件已存在');return}
+    const content=rootLabel;
+    const newId=genFileId();
+    saveFileData(fileName,content);
+    const idx2=getFileIndex();
+    const f=idx2.find(x=>x.name===fileName);
+    if(f){
+      const oldId=f.id;
+      if(oldId&&oldId!==newId){const raw=localStorage.getItem('mindmap_file_id_'+oldId);if(raw){localStorage.setItem('mindmap_file_id_'+newId,raw);localStorage.removeItem('mindmap_file_id_'+oldId)}}
+      f.id=newId;f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2);
+    }
+    currentFileName=fileName;
+    currentFileContent=content;
+    localStorage.setItem('mindmap_current_file',fileName);
+    document.getElementById('fileNameInput').value=fileName.replace('.txt','');
+    notifyParent('openFile',{name:fileName,content,id:newId});
+    renderFileList();
+    const config=getSyncConfig();
+    if(config.enabled){
+      await uploadCurrentFile();
+    }
+    toast('已创建：'+fileName);
+  };
+}
+
 function toast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   clearTimeout(toast._timer);toast._timer=setTimeout(()=>t.classList.remove('show'),1500);
+  notifyParent('syncToast',{message:msg});
 }
 
 function updateSyncButton(icon){
   const curBtn=document.getElementById('syncCurBtn');
   if(curBtn)curBtn.textContent=icon+' 同步当前';
+  notifyParent('syncStatusChanged',{icon:icon});
+}
+
+function startAutoSync(){
+  stopAutoSync();
+  const config=getSyncConfig();
+  if(!config.enabled)return;
+  autoSyncCheckTimer=setInterval(()=>{
+    checkAutoSyncTriggers();
+  },5000);
+}
+
+function stopAutoSync(){
+  if(autoSyncCheckTimer){clearInterval(autoSyncCheckTimer);autoSyncCheckTimer=null}
+  if(autoSyncTimer){clearTimeout(autoSyncTimer);autoSyncTimer=null}
+}
+
+function checkAutoSyncTriggers(){
+  const config=getSyncConfig();
+  if(!config.enabled||!currentFileName)return;
+  if(syncMutex)return;
+  const now=Date.now();
+  const deltaIntervalMs=(config.syncDeltaInterval||5)*1000;
+  if(now-lastDeltaSyncTime<deltaIntervalMs)return;
+  const meta=getFileMeta(currentFileName);
+  if(!meta.isNewFile&&hasLocalEdits(currentFileName)){
+    const diff=(meta.version||0)-(meta.lastSyncVersion||0);
+    if(diff>=(config.syncThreshold||10)){
+      lastDeltaSyncTime=now;
+      autoSyncCurrentFile('差值触发(v+'+diff+')');
+      return;
+    }
+  }
+  const lastAny=getLastSyncTime();
+  const checkIntervalMs=(config.cloudCheckInterval||5)*60*1000;
+  if(lastAny>0&&now-lastAny>=checkIntervalMs){
+    lastDeltaSyncTime=now;
+    autoSyncCurrentFile('定时触发');
+    return;
+  }
+}
+
+async function autoSyncCurrentFile(reason){
+  if(syncMutex||!currentFileName)return;
+  const config=getSyncConfig();
+  if(!config.enabled)return;
+  await enqueueSync(async()=>{
+    try{
+      const dlResult=await downloadCurrentFile();
+      if(dlResult.status==='conflict'){
+        toast('自动同步('+reason+')：版本冲突，请手动处理');
+        return;
+      }
+      await uploadCurrentFile();
+      setLastSyncTime(Date.now());
+    }catch(e){}
+  },'自动同步');
+}
+
+function triggerLoginSync(){
+  const config=getSyncConfig();
+  if(!config.enabled||!currentFileName)return;
+  setTimeout(()=>{
+    if(!syncMutex)autoSyncCurrentFile('登录触发');
+  },2000);
+}
+
+function triggerOpenFileSync(fileName){
+  const config=getSyncConfig();
+  if(!config.enabled)return;
+  const meta=getFileMeta(fileName);
+  if(meta.isNewFile)return;
+  const cloud=cloudFileCache.get(meta.id);
+  if(!cloud)return;
+  const cloudVer=parseInt(cloud.版本号||'0');
+  const localVer=meta.version||0;
+  if(localVer>=cloudVer&&!hasLocalEdits(fileName))return;
+  setTimeout(()=>{
+    if(!syncMutex)autoSyncCurrentFile('打开文件触发');
+  },1000);
 }
 
 async function syncCurrentFile(){
@@ -1480,9 +1659,15 @@ async function syncCurrentFile(){
     try{
       const dlResult=await downloadCurrentFile();
       if(dlResult.status==='conflict'){
+        toast('下载阶段发现冲突，请处理后继续上传');
         await new Promise(resolve=>{conflictResolver=resolve});
       }
+      if(dlResult.status==='success'){
+        toast('下载完成，即将上传...');
+      }
       await uploadCurrentFile();
+    }catch(e){
+      toast('同步异常：'+e.message);
     }finally{
       conflictResolver=null;
     }
@@ -1494,16 +1679,19 @@ async function uploadCurrentFile(){
   if(!config.enabled){toast('云同步未启用');return{status:'error',message:'未启用',isNetworkError:false}}
   if(!currentFileName){toast('请先打开文件');return{status:'error',message:'无文件',isNetworkError:false}}
   const fileName=currentFileName;
-  const content=currentFileContent;
-  const localVer=getFileVersion(fileName);
   const meta=getFileMeta(fileName);
-  const netTime=await getNetworkTime();
-  const uploadContent=content;
-  const uploadVersion=localVer;
-  const uploadFileName=fileName;
-  const uploadId=meta.id;
-  const uploadFolder=meta.folder||'';
+  const snapshotContent=currentFileContent;
+  const snapshotVersion=getFileVersion(fileName);
+  const snapshotFileName=fileName;
+  const snapshotId=meta.id;
+  const snapshotFolder=meta.folder||'';
   updateSyncButton('🔄');
+  const netTime=await getNetworkTime();
+  const uploadContent=snapshotContent;
+  const uploadVersion=snapshotVersion;
+  const uploadFileName=snapshotFileName;
+  const uploadId=snapshotId;
+  const uploadFolder=snapshotFolder;
   const cloudResult=await findFileInCloudById(uploadId);
   if(!cloudResult.networkOk){
     updateSyncButton('❌');
@@ -1515,7 +1703,7 @@ async function uploadCurrentFile(){
     const newRow=await findFirstEmptyRow();
     const writeResult=await callCloudAPI('批量写入',{
       行号:newRow,
-      数据:{ID:uploadId,文件名:uploadFileName,内容:uploadContent,版本号:uploadVersion.toString(),文件夹路径:uploadFolder,最后上传发起时间:new Date(netTime).toISOString()}
+      数据:{ID:uploadId,文件名:uploadFileName,内容:uploadContent,版本号:uploadVersion.toString(),文件夹路径:uploadFolder,最后上传发起时间:formatBeijingTime(netTime),最后编辑时间:getLastEditTime()}
     });
     if(writeResult.status!=='success'){
       toast('云端新建失败：'+(writeResult.tongzhi||writeResult.message||'未知错误'));
@@ -1548,7 +1736,7 @@ async function uploadCurrentFile(){
   }
   const writeResult=await callCloudAPI('批量写入',{
     行号:existingFile._行号,
-    数据:{ID:uploadId,文件名:uploadFileName,内容:uploadContent,版本号:uploadVersion.toString(),文件夹路径:uploadFolder,最后上传发起时间:new Date(netTime).toISOString()}
+    数据:{ID:uploadId,文件名:uploadFileName,内容:uploadContent,版本号:uploadVersion.toString(),文件夹路径:uploadFolder,最后上传发起时间:formatBeijingTime(netTime),最后编辑时间:getLastEditTime()}
   });
   if(writeResult.status!=='success'){
     toast('上传失败：'+(writeResult.tongzhi||writeResult.message||'未知错误'));
@@ -1700,7 +1888,7 @@ async function syncAllFiles(){
                 downloaded++;
               }else if(choice==='conflict'){
                 const netTime=await getNetworkTime();
-                const ts=new Date(netTime).toISOString().replace(/[-:T]/g,'').substring(0,14);
+                const ts=formatBeijingTime(netTime).replace(/[-: ]/g,'').substring(0,14);
                 const conflictName=localFile.name.replace('.txt','')+'冲突版本'+ts+'.txt';
                 const newId=genFileId();
                 const fd=loadFileData(localFile.name);
@@ -1717,7 +1905,7 @@ async function syncAllFiles(){
                   const newRow=await findFirstEmptyRow();
                   const wr=await callCloudAPI('批量写入',{
                     行号:newRow,
-                    数据:{ID:newId,文件名:conflictName,内容:fd.data,版本号:'1',文件夹路径:localFile.folder||'',最后上传发起时间:new Date(netTime).toISOString()}
+                    数据:{ID:newId,文件名:conflictName,内容:fd.data,版本号:'1',文件夹路径:localFile.folder||'',最后上传发起时间:formatBeijingTime(netTime),最后编辑时间:getLastEditTime()}
                   });
                   if(wr.status==='success'){
                     setLastSyncVersion(conflictName,1);
@@ -1744,7 +1932,7 @@ async function syncAllFiles(){
                   if(cloudLookup.networkOk&&cloudLookup.file&&cloudLookup.file._行号){
                     const wr=await callCloudAPI('批量写入',{
                       行号:cloudLookup.file._行号,
-                      数据:{ID:localFile.id,文件名:localFile.name,内容:fd.data,版本号:newVer.toString(),文件夹路径:localFile.folder||'',最后上传发起时间:new Date(netTime).toISOString()}
+                      数据:{ID:localFile.id,文件名:localFile.name,内容:fd.data,版本号:newVer.toString(),文件夹路径:localFile.folder||'',最后上传发起时间:formatBeijingTime(netTime),最后编辑时间:getLastEditTime()}
                     });
                     if(wr.status==='success'){
                       localFile.version=newVer;
@@ -1780,7 +1968,7 @@ async function syncAllFiles(){
             const newRow=await findFirstEmptyRow();
             const wr=await callCloudAPI('批量写入',{
               行号:newRow,
-              数据:{ID:f.id,文件名:f.name,内容:fd.data,版本号:(f.version||0).toString(),文件夹路径:f.folder||'',最后上传发起时间:new Date(netTime).toISOString()}
+              数据:{ID:f.id,文件名:f.name,内容:fd.data,版本号:(f.version||0).toString(),文件夹路径:f.folder||'',最后上传发起时间:formatBeijingTime(netTime),最后编辑时间:getLastEditTime()}
             });
             if(wr.status==='success'){
               setLastSyncVersion(f.name,f.version||0);
@@ -1794,7 +1982,7 @@ async function syncAllFiles(){
               const netTime=await getNetworkTime();
               const wr=await callCloudAPI('批量写入',{
                 行号:cloudFile._行号,
-                数据:{ID:f.id,文件名:f.name,内容:fd.data,版本号:(f.version||0).toString(),文件夹路径:f.folder||'',最后上传发起时间:new Date(netTime).toISOString()}
+                数据:{ID:f.id,文件名:f.name,内容:fd.data,版本号:(f.version||0).toString(),文件夹路径:f.folder||'',最后上传发起时间:formatBeijingTime(netTime),最后编辑时间:getLastEditTime()}
               });
               if(wr.status==='success'){
                 setLastSyncVersion(f.name,f.version||0);
@@ -1823,11 +2011,13 @@ async function syncAllFiles(){
       }
     }catch(e){errors++}
     renderFileList();
+    document.getElementById('mainUI').style.display='';
     status.style.color=errors?'#e67e22':'#27ae60';
     let msg='✅ 同步完成 | 上传: '+uploaded+' | 下载: '+downloaded+' | 远程删除: '+deleted;
     if(skipped)msg+=' | 有编辑跳过: '+skipped;
     if(errors)msg+=' | 错误: '+errors;
     status.textContent=msg;
+    toast(msg);
     btn.disabled=false;btn.textContent='全部同步';
     setLastSyncTime(Date.now());
     refreshCloudList();
@@ -1860,50 +2050,169 @@ async function initSyncSheet(){
 window.addEventListener('message',function(e){
   const data=e.data;
   if(!data||!data.type)return;
-  if(data.type==='open'||data.type==='init'||data.type==='setCurrentFile'){
-    currentFileName=data.currentFileName||data.name||'';
-    currentFileContent=data.currentContent||data.content||'';
-    document.getElementById('fileNameInput').value=currentFileName.replace('.txt','');
-    renderFileList();
-  }
-  if(data.type==='fileDeleted'){
-    if(currentFileName===data.name){
-      currentFileName='';
-      currentFileContent='';
-    }
-    renderFileList();
-  }
-  if(data.type==='fileRenamed'){
-    if(currentFileName===data.oldName){
-      currentFileName=data.newName;
+  if(!data.target||data.target!=='fileManager')return;
+  switch(data.type){
+    case 'open':
+    case 'init':
+    case 'setCurrentFile':
+      currentFileName=data.currentFileName||data.name||'';
+      currentFileContent=data.currentContent||data.content||'';
       document.getElementById('fileNameInput').value=currentFileName.replace('.txt','');
-    }
-    renderFileList();
-  }
-  if(data.type==='openFile'){
-    const name=data.name;
-    const id=data.id;
-    if(id){
-      openFileById(id);
-    }else if(name){
-      const idx=getFileIndex();
-      const f=idx.find(x=>x.name===name);
-      if(f&&f.id)openFileById(f.id);
-    }
-  }
-  if(data.type==='refreshFileList'){
-    renderFileList();
-  }
-  if(data.type==='syncComplete'){
-    toast('同步完成 | 拉取:'+(data.pulled||0)+' 上传:'+(data.uploaded||0));
-  }
-  if(data.type==='syncCurrentFromMain'){
-    syncCurrentFile();
-  }
-  if(data.type==='fileContentChanged'){
-    if(data.name===currentFileName){
-      currentFileContent=data.content||'';
-    }
+      renderFileList();
+      break;
+    case 'fileDeleted':
+      if(currentFileName===data.name){
+        currentFileName='';
+        currentFileContent='';
+      }
+      renderFileList();
+      break;
+    case 'fileRenamed':
+      if(currentFileName===data.oldName){
+        currentFileName=data.newName;
+        document.getElementById('fileNameInput').value=currentFileName.replace('.txt','');
+      }
+      renderFileList();
+      break;
+    case 'openFile':
+      if(data.id){openFileById(data.id)}
+      else if(data.name){
+        const idx=getFileIndex();
+        const f=idx.find(x=>x.name===data.name);
+        if(f&&f.id)openFileById(f.id);
+      }
+      break;
+    case 'refreshFileList':
+      renderFileList();
+      break;
+    case 'syncComplete':
+      toast('同步完成 | 拉取:'+(data.pulled||0)+' 上传:'+(data.uploaded||0));
+      break;
+    case 'syncCurrentFromMain':
+      (async function(){
+        try{
+          syncCurrentFileFromLocal();
+          await syncCurrentFile();
+        }catch(err){}
+      })();
+      break;
+    case 'fileContentChanged':
+      break;
+    case 'mainReady':
+      startAutoSync();
+      break;
+    case 'mainActivated':
+      startAutoSync();
+      break;
+    case 'refreshCloud':
+      refreshCloudList().catch(()=>{});
+      break;
+    case 'smartSyncOnOpen':
+      (async function(){
+        try{
+          const idx=getFileIndex();
+          const f=idx.find(x=>x.id===data.fileId);
+          if(f&&!f.isNewFile){
+            const cloudResult=await findFileInCloudById(data.fileId);
+            if(cloudResult.networkOk&&cloudResult.file){
+              const cloudVer=parseInt(cloudResult.file.版本号||'0');
+              const localVer=f.version||0;
+              if(cloudVer>localVer){
+                if(!hasLocalEdits(f.name)){
+                  const content=cloudResult.file.内容||'';
+                  notifyParent('fileContentUpdated',{name:f.name,content:content});
+                  setFileVersion(f.name,cloudVer);
+                  setLastSyncVersion(f.name,cloudVer);
+                  clearNewFileFlag(f.id);
+                  setLastSyncTime(Date.now());
+                  notifyParent('syncToast',{message:'已自动同步云端更新 v'+cloudVer});
+                  notifyParent('versionUpdated',{fileName:f.name,version:cloudVer,lastSyncVersion:cloudVer});
+                }else{
+                  notifyParent('syncToast',{message:'云端有更新(v'+cloudVer+')，本地有未同步编辑，请手动同步'});
+                }
+              }
+            }
+          }
+        }catch(err){}
+      })();
+      break;
+    case 'uploadCurrent':
+      (async function(){
+        try{
+          syncCurrentFileFromLocal();
+          await uploadCurrentFile();
+        }catch(err){}
+      })();
+      break;
+    case 'syncAllFiles':
+      syncAllFiles();
+      break;
+    case 'downloadCloudFile':
+      (async function(){
+        try{
+          await downloadCloudFileById(data.fileId,data.fileName);
+        }catch(err){}
+      })();
+      break;
+    case 'fileRenamed_local':
+      (async function(){
+        try{
+          const idx=getFileIndex();
+          const f=idx.find(x=>x.id===data.fileId);
+          if(!f)return;
+          const cloudResult=await findFileInCloudById(data.fileId);
+          if(cloudResult.networkOk&&cloudResult.file&&cloudResult.file._行号){
+            const netTime=await getNetworkTime();
+            await callCloudAPI('批量写入',{
+              行号:cloudResult.file._行号,
+              数据:{ID:data.fileId,文件名:f.name,最后上传发起时间:formatBeijingTime(netTime)}
+            });
+            setLastSyncTime(Date.now());
+          }
+        }catch(err){}
+      })();
+      break;
+    case 'fileDeleted_local':
+      (async function(){
+        try{
+          const cloudResult=await findFileInCloudById(data.fileId);
+          if(cloudResult.networkOk&&cloudResult.file&&cloudResult.file._行号){
+            const netTime=await getNetworkTime();
+            await callCloudAPI('批量写入',{
+              行号:cloudResult.file._行号,
+              数据:{ID:'删除FYHFOX'+data.fileId,文件名:'',内容:'',版本号:'0',最后上传发起时间:formatBeijingTime(netTime)}
+            });
+            setLastSyncTime(Date.now());
+          }
+        }catch(err){}
+      })();
+      break;
+    case 'fileCopied':
+      (async function(){
+        try{
+          const idx=getFileIndex();
+          const f=idx.find(x=>x.id===data.fileId);
+          if(!f)return;
+          const fd=loadFileDataById(data.fileId);
+          const content=fd?fd.data:'';
+          const netTime=await getNetworkTime();
+          const newRow=await findFirstEmptyRow();
+          const result=await callCloudAPI('批量写入',{
+            行号:newRow,
+            数据:{ID:data.fileId,文件名:f.name,内容:content,版本号:'1',最后上传发起时间:formatBeijingTime(netTime),最后编辑时间:getLastEditTime()}
+          });
+          if(result.status==='success'){
+            setLastSyncVersion(f.name,1);
+            clearNewFileFlag(data.fileId);
+            setLastSyncTime(Date.now());
+          }
+        }catch(err){}
+      })();
+      break;
+    case 'contentChanged':
+      break;
+    case 'currentContentResponse':
+      break;
   }
 });
 
@@ -1921,6 +2230,8 @@ window.addEventListener('message',function(e){
   if(config.enabled){
     initSyncSheet().catch(()=>{});
     refreshCloudList().catch(()=>{});
+    startAutoSync();
+    triggerLoginSync();
   }
 })();
 </script>
