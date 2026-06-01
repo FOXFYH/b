@@ -91,7 +91,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 #context-menu .menu-row{display:flex;gap:0}
 #context-menu .menu-row .menu-item{flex:1;justify-content:center;padding:4px 8px}
 #context-menu .menu-row .menu-item:not(:last-child){border-right:1px solid #eee}
-.bg-swatch{width:28px;height:28px;border-radius:5px;cursor:pointer;border:2px solid #ccc;flex-shrink:0;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.bg-swatch{width:22px;height:22px;border-radius:4px;cursor:pointer;border:2px solid #ccc;flex-shrink:0}
 .bg-swatch:hover{border-color:#333;transform:scale(1.1)}
 .bg-swatch.selected{border-color:#333;box-shadow:0 0 0 2px #4A90D9}
 .color-swatch{width:22px;height:22px;border-radius:4px;cursor:pointer;border:2px solid transparent;flex-shrink:0}
@@ -231,11 +231,11 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   </div>
   <div class="menu-item" onclick="pasteFromClipboard()">📋 剪贴板粘贴</div>
   <div class="menu-sep"></div>
-  <div id="bg-color-row" style="display:flex;align-items:center;gap:6px;padding:6px 10px"><span style="font-size:11px;color:#888;white-space:nowrap">底色</span></div>
+  <div id="bg-color-row" class="color-picker-row"></div>
   <div class="menu-sep" id="bg-color-sep"></div>
   <div id="color-picker-row" class="color-picker-row" style="display:none"></div>
   <div class="menu-sep" id="color-sep" style="display:none;"></div>
-  <div class="menu-item" onclick="toggleCollapse()">🔄 折叠/展开</div>
+  <div class="menu-item" onclick="toggleCollapse()">🔄 折叠/展开下级</div>
 </div>
 <div id="toast"></div>
 <script>
@@ -253,7 +253,7 @@ document.getElementById('context-menu').addEventListener('touchend',function(e){
       <tr><td style="padding:4px 8px;color:#888">Tab</td><td>添加子级标签</td></tr>
       <tr><td style="padding:4px 8px;color:#888">F2 / 双击</td><td>编辑标签</td></tr>
       <tr><td style="padding:4px 8px;color:#888">Delete</td><td>删除标签</td></tr>
-      <tr><td style="padding:4px 8px;color:#888">空格</td><td>折叠/展开</td></tr>
+      <tr><td style="padding:4px 8px;color:#888">空格</td><td>折叠/展开下级</td></tr>
       <tr><td style="padding:4px 8px;color:#888">Ctrl+Z / Y</td><td>撤销 / 重做</td></tr>
       <tr><td style="padding:4px 8px;color:#888">Ctrl+X / C / V</td><td>剪切 / 复制 / 粘贴</td></tr>
       <tr><td style="padding:4px 8px;color:#888">Ctrl+F</td><td>搜索标签</td></tr>
@@ -1199,7 +1199,12 @@ function toggleCollapse(){
   if(!selectedNode||selectedNode.children.length===0)return;
   pushHistory();
   const oldX=selectedNode.x,oldY=selectedNode.y;
-  selectedNode.collapsed=!selectedNode.collapsed;
+  if(selectedNode.collapsed){
+    selectedNode.collapsed=false;
+    (function walk(n){for(const c of n.children){if(c.children.length>0)c.collapsed=false;walk(c)}})(selectedNode);
+  }else{
+    selectedNode.collapsed=true;
+  }
   rebuildMap();
   panX+=(oldX-selectedNode.x)*zoom;
   panY+=(oldY-selectedNode.y)*zoom;
@@ -2119,9 +2124,9 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
     menu.style.top=top+'px';
     const bgRow=document.getElementById('bg-color-row');
     const bgSep=document.getElementById('bg-color-sep');
-    const bgLabel=bgRow.querySelector('span');
     bgRow.innerHTML='';
-    if(bgLabel)bgRow.appendChild(bgLabel);
+    const bgLabel=document.createElement('span');bgLabel.style.cssText='font-size:11px;color:#888;white-space:nowrap';bgLabel.textContent='底色';bgRow.appendChild(bgLabel);
+    const bgMain=document.createElement('div');bgMain.className='color-picker-main';bgMain.style.flexWrap='nowrap';bgRow.appendChild(bgMain);
     const bgColors=[{c:'#e8e8e8',l:'灰'},{c:'#e74c3c',l:'红'},{c:'#f1c40f',l:'黄'},{c:'#2980b9',l:'蓝'}];
     bgColors.forEach(function(item){
       const sw=document.createElement('div');
@@ -2129,7 +2134,7 @@ document.getElementById('node-quick-menu').addEventListener('click',function(e){
       sw.style.background=item.c;
       sw.title=item.l;
       sw.onclick=function(){pushHistory();selectedNode._bgColor=item.c==='#e8e8e8'?'':item.c;rebuildMap();render()};
-      bgRow.appendChild(sw);
+      bgMain.appendChild(sw);
     });
     const colorRow=document.getElementById('color-picker-row');
     const colorSep=document.getElementById('color-sep');
@@ -2474,9 +2479,9 @@ svgEl.addEventListener('contextmenu',function(e){
     menu.style.left=left+'px';
     menu.style.top=top+'px';
     const bgRow=document.getElementById('bg-color-row');
-    const bgLabel=bgRow.querySelector('span');
     bgRow.innerHTML='';
-    if(bgLabel)bgRow.appendChild(bgLabel);
+    const bgLabel=document.createElement('span');bgLabel.style.cssText='font-size:11px;color:#888;white-space:nowrap';bgLabel.textContent='底色';bgRow.appendChild(bgLabel);
+    const bgMain=document.createElement('div');bgMain.className='color-picker-main';bgMain.style.flexWrap='nowrap';bgRow.appendChild(bgMain);
     const bgColors=[{c:'#e8e8e8',l:'灰'},{c:'#e74c3c',l:'红'},{c:'#f1c40f',l:'黄'},{c:'#2980b9',l:'蓝'}];
     bgColors.forEach(function(item){
       const sw=document.createElement('div');
@@ -2484,7 +2489,7 @@ svgEl.addEventListener('contextmenu',function(e){
       sw.style.background=item.c;
       sw.title=item.l;
       sw.onclick=function(){pushHistory();node._bgColor=item.c==='#e8e8e8'?'':item.c;rebuildMap();render()};
-      bgRow.appendChild(sw);
+      bgMain.appendChild(sw);
     });
     const colorRow=document.getElementById('color-picker-row');
     const colorSep=document.getElementById('color-sep');
