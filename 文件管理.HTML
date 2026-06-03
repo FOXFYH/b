@@ -1,4 +1,4 @@
-﻿﻿﻿﻿<!DOCTYPE html>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -193,7 +193,12 @@ function getFileMeta(name){
   try{
     const idx=getFileIndex();
     const f=idx.find(x=>x.name===name);
-    if(!f)return{name,id:genFileId(),version:0,lastSyncVersion:0,isNewFile:true};
+    if(!f){
+      const newEntry={name,id:genFileId(),version:0,lastSyncVersion:0,isNewFile:true,folder:currentFolder||''};
+      idx.push(newEntry);
+      setFileIndex(idx);
+      return newEntry;
+    }
     if(!f.id){f.id=genFileId();f.isNewFile=true}
     if(f.lastSyncVersion===undefined){f.lastSyncVersion=f.version||0;setFileIndex(idx)}
     return f;
@@ -1181,22 +1186,15 @@ async function refreshCloudList(){
       const idx=getFileIndex();
       let changed=false;
       const cloudIds=new Set(cloudFileCache.keys());
-      const toDelete=[];
-      for(let i=idx.length-1;i>=0;i--){
-        const f=idx[i];
+      const notInCloud=[];
+      for(const f of idx){
         if(f.isNewFile)continue;
         if(!cloudIds.has(f.id)){
-          toDelete.push(f.name);
-          idx.splice(i,1);
-          changed=true;
+          notInCloud.push(f.name);
         }
       }
-      for(const name of toDelete){
-        const dIdx=getFileIndex();
-        const df=dIdx.find(x=>x.name===name);
-        if(df&&df.id)localStorage.removeItem('mindmap_file_id_'+df.id);
-        const newIdx=dIdx.filter(x=>x.name!==name);
-        setFileIndex(newIdx);
+      if(notInCloud.length>0){
+        toast('以下本地文件在云端未找到(可能已被云端删除)：'+notInCloud.join('、'));
       }
       for(const f of idx){
         if(f.isNewFile)continue;
@@ -1613,11 +1611,20 @@ async function autoSyncCurrentFile(reason){
   if(syncMutex||!currentFileName)return;
   const config=getSyncConfig();
   if(!config.enabled)return;
+  syncCurrentFileFromLocal();
+  if(!currentFileContent&&currentFileName){
+    const fd=loadFileData(currentFileName);
+    if(fd&&fd.data)currentFileContent=fd.data;
+  }
   await enqueueSync(async()=>{
     try{
       const dlResult=await downloadCurrentFile();
       if(dlResult.status==='conflict'){
         toast('自动同步('+reason+')：版本冲突，请手动处理');
+        return;
+      }
+      if(dlResult.status==='error'){
+        toast('自动同步('+reason+')：下载失败，跳过上传');
         return;
       }
       await uploadCurrentFile();
@@ -1680,6 +1687,10 @@ async function uploadCurrentFile(){
   if(!currentFileName){toast('请先打开文件');return{status:'error',message:'无文件',isNetworkError:false}}
   const fileName=currentFileName;
   const meta=getFileMeta(fileName);
+  if(!currentFileContent){
+    const fd=loadFileDataById(meta.id)||loadFileData(fileName);
+    if(fd&&fd.data)currentFileContent=fd.data;
+  }
   const snapshotContent=currentFileContent;
   const snapshotVersion=getFileVersion(fileName);
   const snapshotFileName=fileName;
@@ -1948,10 +1959,21 @@ async function syncAllFiles(){
           }
         }
       }
+      const localNotInCloud=[];
       for(let i=idx.length-1;i>=0;i--){
         const f=idx[i];
         if(cloudIds.has(f.id))continue;
         if(f.isNewFile)continue;
+        localNotInCloud.push(f.name);
+      }
+      if(localNotInCloud.length>0&&!confirm('以下本地文件在云端未找到，是否删除本地副本？\n'+localNotInCloud.join('、'))){
+        localNotInCloud.length=0;
+      }
+      for(let i=idx.length-1;i>=0;i--){
+        const f=idx[i];
+        if(cloudIds.has(f.id))continue;
+        if(f.isNewFile)continue;
+        if(!localNotInCloud.includes(f.name))continue;
         deleteFileData(f.name);
         idx.splice(i,1);
         deleted++;
@@ -2210,6 +2232,7 @@ window.addEventListener('message',function(e){
       })();
       break;
     case 'contentChanged':
+      syncCurrentFileFromLocal();
       break;
     case 'currentContentResponse':
       break;
