@@ -1757,7 +1757,8 @@ window.addEventListener('message',function(e){
     case 'syncSettingsChanged':
       break;
     case 'syncToast':
-      toast(msg.message||'');
+      // 文件管理器打开时它自己会在状态栏显示，主程序不再重复弹窗
+      if(!isFileManagerOpen) toast(msg.message||'');
       break;
     case 'syncConflict':
       openFileManagerFrame();
