@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -1831,7 +1831,19 @@ async function openFileById(id){
     }
 
     if(cloudVer>syncVer){
-      // 云端版本更高 → 先下载覆盖本地再打开
+      // 云端版本更高 → 检查是否实际一致
+      if(localVer===cloudVer){
+        // 本地版本=云端版本>近同号 → 近同号落后，直接修正
+        setLastSyncVersion(f.name,cloudVer);
+        currentFileName=f.name;
+        currentFileContent=fd.data||'';
+        localStorage.setItem(K('current_file'),f.name);
+        notifyParent('openFile',{name:f.name,content:fd.data,id:f.id});
+        renderFileList();
+        toast('已打开（修正近同号v'+syncVer+'→v'+cloudVer+'）：'+f.name);
+        return;
+      }
+      // 云端版本更高且本地版本不同 → 先下载覆盖本地再打开
       toast('云端版本更高，正在下载...');
       currentFileName=f.name;
       currentFileContent=fd.data||'';
@@ -1923,6 +1935,16 @@ async function refreshCloudList(){
         if(cloud&&cloud.文件夹路径!==undefined&&(f.folder||'')!==cloud.文件夹路径){
           f.folder=cloud.文件夹路径;
           changed=true;
+        }
+        // 修正近同号：本地版本=云端版本>近同号时，同步近同号
+        if(cloud){
+          const cloudVer=parseInt(cloud.版本号||'0');
+          const localVer=f.version||0;
+          const syncVer=f.lastSyncVersion||0;
+          if(localVer===cloudVer&&cloudVer>syncVer){
+            f.lastSyncVersion=cloudVer;
+            changed=true;
+          }
         }
       }
       if(changed)setFileIndex(idx);
@@ -2399,6 +2421,11 @@ async function uploadCurrentFile(){
   // 云端判定：无需上传
   if(result.判定结果==='无需上传'){
     setLastSyncTime(Date.now());
+    // 修正近同号：如果本地version与云端一致但近同号落后，同步近同号
+    const cloudVer=result.云端版本号||0;
+    if(cloudVer>effectiveSyncVer&&snapshotVersion===cloudVer){
+      setLastSyncVersion(fileName,cloudVer);
+    }
     clearNewFileFlag(snapshotId);
     updateSyncButton('☁️');
     toast('云端已是最新');
@@ -2527,6 +2554,11 @@ async function downloadCurrentFile(){
 
   // 云端判定：无需下载
   if(result.判定结果==='无需下载'){
+    // 修正近同号：如果本地version与云端一致但近同号落后，同步近同号
+    const cloudVer=result.云端版本号||0;
+    if(cloudVer>effectiveSyncVer&&localVer===cloudVer){
+      setLastSyncVersion(fileName,cloudVer);
+    }
     updateSyncButton('☁️');
     toast('本地已同步此版本');
     return{status:'no_update',version:localVer};
@@ -2927,7 +2959,11 @@ async function syncAllFilesInternal(){
       const syncVer=localFile.lastSyncVersion||0;
       const cloudVer=parseInt(cf.版本号||'0');
       if(cloudVer>syncVer){
-        if(localFile.name===currentFileName){
+        // 本地版本=云端版本>近同号 → 近同号落后，直接修正
+        if(localVer===cloudVer){
+          localFile.lastSyncVersion=cloudVer;
+          setFileIndex(idx);
+        }else if(localFile.name===currentFileName){
           // 当前编辑文件 → 下载内容
           if(localVer<=syncVer){
             const merged=await mergeCloudFragments(cf.ID,cf);
