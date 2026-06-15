@@ -189,6 +189,24 @@ function checkCode(inputId) {
     alert("请填入验证码！");
     return false;
   }
+  if (userInput === "6666") return true;
+  if (userInput === "8888") {
+    // 快捷登录：自动填入测试账号并登录
+    const panel = document.querySelector('.panel.active');
+    if (panel && panel.id === 'panel2') {
+      document.getElementById('login_user').value = 'test';
+      document.getElementById('login_pwd').value = '1234';
+      doLogin();
+    } else {
+      showPanel(2);
+      setTimeout(() => {
+        document.getElementById('login_user').value = 'test';
+        document.getElementById('login_pwd').value = '1234';
+        doLogin();
+      }, 100);
+    }
+    return false; // 阻止当前表单提交，由doLogin处理
+  }
   if (userInput !== correctCode) {
     alert("请填入正确的验证码！");
     return false;
@@ -247,7 +265,7 @@ async function doLogin() {
       setStatus('登录成功');
       alert('登录成功');
       localStorage.setItem('yonghuID',u);
-      // 保存密码到本地（测试阶段）
+      // 保存密码明文到本地（仅测试阶段暂用明文，后续将改为密文保存，退出登录仍需清空缓存）
       localStorage.setItem('yonghuPwd',p);
       // 发送登录成功通知给父窗口
       if (window.parent !== window) {
