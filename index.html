@@ -111,34 +111,11 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 #node-quick-menu .qm-danger{color:#e74c3c}
 #node-quick-menu .qm-danger:hover{background:#fef0ef;color:#c0392b}
 #inline-editor textarea{font-family:'Microsoft YaHei','PingFang SC',sans-serif;border:none;outline:none;resize:none;background:#e8e8e8;box-shadow:0 0 0 1px rgba(74,144,217,.25);overflow:hidden;color:#333;white-space:pre;min-width:40px;min-height:20px}
-#login-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:500;display:flex;justify-content:center;align-items:center}
-#login-overlay.hidden{display:none}
-#login-box{background:#fff;border-radius:12px;padding:24px;width:380px;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,.25)}
-#login-box h3{margin:0 0 16px;font-size:18px;color:#333;text-align:center}
-.login-tabs{display:flex;margin-bottom:16px;border-radius:6px;overflow:hidden;border:1px solid #ddd}
-.login-tab{flex:1;padding:10px;text-align:center;cursor:pointer;border:none;background:#f5f5f5;font-size:14px;font-family:inherit;transition:all .15s}
-.login-tab.active{background:#4A90D9;color:#fff}
-.login-panel{display:none}
-.login-panel.active{display:block}
-.login-field{margin-bottom:12px}
-.login-field label{display:block;font-size:13px;color:#555;margin-bottom:4px}
-.login-field input{width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:inherit;outline:none;transition:border .2s;box-sizing:border-box}
-.login-field input:focus{border-color:#4A90D9}
-.login-code-row{display:flex;align-items:center;gap:8px;margin-bottom:12px}
-.login-code-row label{white-space:nowrap;font-size:13px;color:#555;min-width:70px}
-.login-code-row input{flex:1;max-width:120px;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:14px;outline:none;box-sizing:border-box}
-.login-code-row input:focus{border-color:#4A90D9}
-.login-code-row button{padding:8px 12px;border:none;border-radius:6px;background:#6c757d;color:#fff;cursor:pointer;font-size:12px;white-space:nowrap;font-family:inherit}
-.login-code-row button:disabled{background:#aaa;cursor:not-allowed}
-.login-btn{width:100%;padding:10px;border:none;border-radius:6px;color:#fff;font-size:15px;cursor:pointer;font-family:inherit;margin-top:4px;transition:opacity .15s}
-.login-btn:hover{opacity:.9}
-.login-btn.register{background:#28a745}
-.login-btn.login{background:#0071e3}
-.login-btn.changepwd{background:#17a2b8}
-.login-status{padding:8px 10px;border-radius:6px;margin-bottom:12px;font-size:13px;display:none}
-.login-status.show{display:block}
-.login-status.success{background:#e8f5e9;color:#1b5e20}
-.login-status.error{background:#ffebee;color:#b71c1c}
+/* 登录窗口（iframe方式引用denglu.html） */
+#loginIframeContainer{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:400px;height:420px;background:#fff;border-radius:12px;box-shadow:0 0 20px rgba(0,0,0,.2);z-index:9999;display:none}
+#loginHeader{height:36px;background:#4A90D9;color:#fff;padding:8px 12px;border-radius:12px 12px 0 0;cursor:move;font-weight:bold;display:flex;justify-content:space-between;align-items:center;font-size:14px}
+#closeLoginBtn{background:#fff;color:#4A90D9;border:none;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer;width:auto}
+#loginIframe{width:100%;height:calc(100% - 36px);border:none;border-radius:0 0 12px 12px}
 #toolbar .user-info{display:flex;align-items:center;gap:4px;font-size:11px;color:#666;flex-shrink:0}
 #toolbar .user-info .user-name{color:#4A90D9;font-weight:500}
 #toolbar .logout-btn{padding:2px 6px;border:1px solid #ddd;border-radius:3px;background:#fff;cursor:pointer;font-size:10px;color:#999;font-family:inherit}
@@ -146,39 +123,13 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 </style>
 </head>
 <body>
-<!-- 登录遮罩层 -->
-<div id="login-overlay">
-  <div id="login-box">
-    <h3>思维导图 - 账号登录</h3>
-    <div id="loginStatus" class="login-status"></div>
-    <div class="login-tabs">
-      <div class="login-tab active" onclick="showLoginPanel(1)">注册</div>
-      <div class="login-tab" onclick="showLoginPanel(2)">登录</div>
-      <div class="login-tab" onclick="showLoginPanel(3)">修改密码</div>
-    </div>
-    <!-- 注册面板 -->
-    <div class="login-panel active" id="loginPanel1">
-      <div class="login-field"><label>用户名</label><input id="reg_user" placeholder="注册用户名"></div>
-      <div class="login-field"><label>密码</label><input id="reg_pwd" type="password" placeholder="密码"></div>
-      <div class="login-code-row"><label>验证码</label><input id="code1" placeholder="验证码"><button id="btnCode1" onclick="getLoginCode(1)">获取验证码</button></div>
-      <button class="login-btn register" onclick="doRegister()">注册</button>
-    </div>
-    <!-- 登录面板 -->
-    <div class="login-panel" id="loginPanel2">
-      <div class="login-field"><label>用户名</label><input id="login_user" placeholder="登录用户名"></div>
-      <div class="login-field"><label>密码</label><input id="login_pwd" type="password" placeholder="密码"></div>
-      <div class="login-code-row"><label>验证码</label><input id="code2" placeholder="验证码"><button id="btnCode2" onclick="getLoginCode(2)">获取验证码</button></div>
-      <button class="login-btn login" onclick="doLogin()">登录</button>
-    </div>
-    <!-- 修改密码面板 -->
-    <div class="login-panel" id="loginPanel3">
-      <div class="login-field"><label>用户名</label><input id="change_user" placeholder="用户名"></div>
-      <div class="login-field"><label>旧密码</label><input id="old_pwd" type="password" placeholder="旧密码"></div>
-      <div class="login-field"><label>新密码</label><input id="new_pwd" type="password" placeholder="新密码"></div>
-      <div class="login-code-row"><label>验证码</label><input id="code3" placeholder="验证码"><button id="btnCode3" onclick="getLoginCode(3)">获取验证码</button></div>
-      <button class="login-btn changepwd" onclick="doChangePassword()">修改密码</button>
-    </div>
+<!-- 登录窗口（iframe引用denglu.html） -->
+<div id="loginIframeContainer">
+  <div id="loginHeader">
+    思维导图 - 账号登录
+    <button id="closeLoginBtn" onclick="hideLoginIframe()">关闭</button>
   </div>
+  <iframe id="loginIframe" src="denglu.html"></iframe>
 </div>
 <div id="toolbar">
   <button onclick="undo()" title="撤销 (Ctrl+Z)">↩</button>
@@ -306,152 +257,61 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 </div>
 <div id="toast"></div>
 <script>
-// ===================== 登录认证系统 =====================
+// ===================== 登录认证系统（iframe引用denglu.html） =====================
 const LOGIN_API_URL = "https://1408347752-dxgsap4qrj.ap-guangzhou.tencentscf.com";
 const LOGIN_WEBHOOK_URL = "https://www.kdocs.cn/api/v3/ide/file/504393979179/script/V2-jCry7lblkwsPtTSmtjlWY/sync_task";
-
-let loginCorrectCode = "";
-let loginCodeLock = false;
-const loginCooldown = 10;
 
 // 当前登录用户
 let CURRENT_USER = localStorage.getItem('mindmap_auth_user') || '';
 let CURRENT_PASS = localStorage.getItem('mindmap_auth_pass') || '';
 let isLoggedIn = !!(CURRENT_USER && CURRENT_PASS);
 
-// 登录面板切换
-function showLoginPanel(num) {
-  document.querySelectorAll('.login-panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('loginPanel' + num).classList.add('active');
-  document.querySelectorAll('.login-tab')[num - 1].classList.add('active');
+// 登录窗口拖拽
+let isLoginDragging = false, loginStartX = 0, loginStartY = 0, loginX = 0, loginY = 0;
+document.getElementById('loginHeader').addEventListener('mousedown', startLoginDrag);
+document.addEventListener('mousemove', doLoginDrag);
+document.addEventListener('mouseup', endLoginDrag);
+function startLoginDrag(e) {
+  isLoginDragging = true;
+  const c = document.getElementById('loginIframeContainer');
+  loginStartX = e.clientX; loginStartY = e.clientY;
+  loginX = c.offsetLeft; loginY = c.offsetTop;
+  document.body.style.userSelect = 'none';
 }
-
-function setLoginStatus(text, isError) {
-  const el = document.getElementById('loginStatus');
-  el.textContent = text;
-  el.className = 'login-status show ' + (isError ? 'error' : 'success');
+function doLoginDrag(e) {
+  if (!isLoginDragging) return;
+  const c = document.getElementById('loginIframeContainer');
+  c.style.left = loginX + (e.clientX - loginStartX) + 'px';
+  c.style.top = loginY + (e.clientY - loginStartY) + 'px';
+  c.style.transform = 'none';
 }
+function endLoginDrag() { isLoginDragging = false; document.body.style.userSelect = 'auto'; }
 
-// 获取验证码
-function getLoginCode(panel) {
-  if (loginCodeLock) return;
-  loginCodeLock = true;
-  const btn = document.getElementById('btnCode' + panel);
-  const originalText = btn.innerText;
-  btn.disabled = true;
-  btn.innerText = loginCooldown + '秒后重试';
-  let countdown = loginCooldown;
-  const timer = setInterval(() => {
-    countdown--;
-    if (countdown <= 0) {
-      clearInterval(timer);
-      loginCodeLock = false;
-      btn.disabled = false;
-      btn.innerText = originalText;
-    } else {
-      btn.innerText = countdown + '秒后重试';
+// 显示/隐藏登录iframe
+function showLoginIframe() { document.getElementById('loginIframeContainer').style.display = 'block'; }
+function hideLoginIframe() { document.getElementById('loginIframeContainer').style.display = 'none'; }
+
+// 监听denglu.html的postMessage
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'loginSuccess') {
+    CURRENT_USER = e.data.username;
+    CURRENT_PASS = e.data.password;
+    isLoggedIn = true;
+    localStorage.setItem('mindmap_auth_user', CURRENT_USER);
+    localStorage.setItem('mindmap_auth_pass', CURRENT_PASS);
+    hideLoginIframe();
+    onLoginSuccess();
+  } else if (e.data && e.data.type === 'passwordChanged') {
+    if (e.data.username === CURRENT_USER) {
+      CURRENT_PASS = e.data.newPassword;
+      localStorage.setItem('mindmap_auth_pass', CURRENT_PASS);
     }
-  }, 1000);
-  setTimeout(() => {
-    let code = '';
-    for (let i = 0; i < 4; i++) code += Math.floor(Math.random() * 10);
-    loginCorrectCode = code;
-    alert('验证码：' + code);
-  }, 1000);
-}
-
-function checkLoginCode(inputId) {
-  const val = document.getElementById(inputId).value.trim();
-  if (!val) { alert('请填入验证码！'); return false; }
-  if (val === "6666") return true;
-  if (val === "8888") {
-    // 快捷登录：自动填入测试账号并登录
-    showLoginPanel(2);
-    document.getElementById('login_user').value = 'test';
-    document.getElementById('login_pwd').value = '1234';
-    document.getElementById('code2').value = '6666';
-    doLogin();
-    return false;
   }
-  if (val !== loginCorrectCode) { alert('验证码错误！'); return false; }
-  return true;
-}
-
-// 注册
-async function doRegister() {
-  if (!checkLoginCode('code1')) return;
-  const u = document.getElementById('reg_user').value.trim();
-  const p = document.getElementById('reg_pwd').value.trim();
-  if (!u || !p) { setLoginStatus('请填写完整', true); return; }
-  setLoginStatus('注册中...', false);
-  try {
-    const body = { webhookUrl: LOGIN_WEBHOOK_URL, message: { Context: { argv: { "登录行为": "注册", "用户名": u, "密码": p } } } };
-    const res = await fetch(LOGIN_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const txt = await res.text();
-    const d = JSON.parse(txt).data?.result || JSON.parse(txt);
-    if (d.TZbianhao === 501) {
-      setLoginStatus('注册成功，请登录', false);
-      showLoginPanel(2);
-      document.getElementById('login_user').value = u;
-      document.getElementById('login_pwd').value = '';
-    } else {
-      setLoginStatus(d.tongzhi || '注册失败', true);
-    }
-  } catch (e) { setLoginStatus('网络异常：' + e, true); }
-}
-
-// 登录
-async function doLogin() {
-  if (!checkLoginCode('code2')) return;
-  const u = document.getElementById('login_user').value.trim();
-  const p = document.getElementById('login_pwd').value.trim();
-  if (!u || !p) { setLoginStatus('请填写完整', true); return; }
-  setLoginStatus('登录中...', false);
-  try {
-    const body = { webhookUrl: LOGIN_WEBHOOK_URL, message: { Context: { argv: { "登录行为": "登录", "用户名": u, "密码": p } } } };
-    const res = await fetch(LOGIN_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const txt = await res.text();
-    const d = JSON.parse(txt).data?.result || JSON.parse(txt);
-    if (d.TZbianhao === 501) {
-      CURRENT_USER = u;
-      CURRENT_PASS = p;
-      isLoggedIn = true;
-      localStorage.setItem('mindmap_auth_user', u);
-      localStorage.setItem('mindmap_auth_pass', p);
-      onLoginSuccess();
-    } else {
-      setLoginStatus(d.tongzhi || '登录失败', true);
-    }
-  } catch (e) { setLoginStatus('网络异常：' + e, true); }
-}
-
-// 修改密码
-async function doChangePassword() {
-  if (!checkLoginCode('code3')) return;
-  const u = document.getElementById('change_user').value.trim();
-  const oldP = document.getElementById('old_pwd').value.trim();
-  const newP = document.getElementById('new_pwd').value.trim();
-  if (!u || !oldP || !newP) { setLoginStatus('请填写完整', true); return; }
-  setLoginStatus('修改中...', false);
-  try {
-    const body = { webhookUrl: LOGIN_WEBHOOK_URL, message: { Context: { argv: { "登录行为": "修改密码", "用户名": u, "密码": newP, "旧密码": oldP } } } };
-    const res = await fetch(LOGIN_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const txt = await res.text();
-    const d = JSON.parse(txt).data?.result || JSON.parse(txt);
-    if (d.TZbianhao === 501) {
-      setLoginStatus('修改成功，请重新登录', false);
-      if (u === CURRENT_USER) { CURRENT_PASS = newP; localStorage.setItem('mindmap_auth_pass', newP); }
-      showLoginPanel(2);
-    } else {
-      setLoginStatus(d.tongzhi || '修改失败', true);
-    }
-  } catch (e) { setLoginStatus('网络异常：' + e, true); }
-}
+});
 
 // 登录成功后
 function onLoginSuccess() {
-  document.getElementById('login-overlay').classList.add('hidden');
+  hideLoginIframe();
   document.getElementById('userInfo').style.display = 'flex';
   document.getElementById('displayUserName').textContent = CURRENT_USER;
   // 通知文件管理器更新认证信息
@@ -501,10 +361,9 @@ function doLogout() {
   root = null; selectedNode = null; currentFileName = '';
   initApp._done = false;
   render();
-  // 显示登录遮罩
-  document.getElementById('login-overlay').classList.remove('hidden');
+  // 显示登录窗口
   document.getElementById('userInfo').style.display = 'none';
-  showLoginPanel(2);
+  showLoginIframe();
 }
 
 // 向服务器验证账密
@@ -522,11 +381,10 @@ async function verifyCredentials(username, password) {
   }
 }
 
-// 检查登录状态，决定是否显示登录遮罩
+// 检查登录状态，决定是否显示登录窗口
 async function checkLoginState() {
   if (isLoggedIn && CURRENT_USER && CURRENT_PASS) {
     // 本地有凭据，向服务器验证是否仍然有效
-    setLoginStatus('验证登录状态...', false);
     const valid = await verifyCredentials(CURRENT_USER, CURRENT_PASS);
     if (valid) {
       onLoginSuccess();
@@ -537,15 +395,12 @@ async function checkLoginState() {
       isLoggedIn = false;
       localStorage.removeItem('mindmap_auth_user');
       localStorage.removeItem('mindmap_auth_pass');
-      setLoginStatus('登录已过期，请重新登录', true);
-      document.getElementById('login-overlay').classList.remove('hidden');
       document.getElementById('userInfo').style.display = 'none';
-      showLoginPanel(2);
+      showLoginIframe();
     }
   } else {
-    document.getElementById('login-overlay').classList.remove('hidden');
     document.getElementById('userInfo').style.display = 'none';
-    showLoginPanel(2);
+    showLoginIframe();
   }
 }
 </script>
