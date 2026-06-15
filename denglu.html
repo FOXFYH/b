@@ -183,7 +183,11 @@ function getCode(panel) {
 }
 
 // ===================== 验证码校验函数 =====================
+let skipCodeCheck = false; // 快捷登录时跳过二次验证
+
 function checkCode(inputId) {
+  // 快捷登录跳过验证码
+  if (skipCodeCheck) { skipCodeCheck = false; return true; }
   const userInput = document.getElementById(inputId).value.trim();
   if (!userInput) {
     alert("请填入验证码！");
@@ -192,6 +196,7 @@ function checkCode(inputId) {
   if (userInput === "6666") return true;
   if (userInput === "8888") {
     // 快捷登录：自动填入测试账号并登录
+    skipCodeCheck = true; // 下次doLogin调用checkCode时跳过
     const panel = document.querySelector('.panel.active');
     if (panel && panel.id === 'panel2') {
       document.getElementById('login_user').value = 'test';
