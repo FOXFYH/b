@@ -233,6 +233,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 <div id="context-menu">
   <div class="menu-item" onclick="addSibling()">➕ 添加同级</div>
   <div class="menu-item" onclick="addChild()">➕ 添加子级</div>
+  <div class="menu-item" onclick="copyAsSibling()">📋 复制为同级</div>
   <div class="menu-item" onclick="editNodeModal()">✏️ 编辑</div>
   <div class="menu-sep"></div>
   <div class="menu-row">
@@ -1224,13 +1225,45 @@ function addSibling(){
   rebuildMap();render();selectNode(node);startInlineEdit(node,true);
 }
 
+function copyAsSibling(){
+  if(browseMode){toast('浏览模式下不可复制');return}
+  if(!selectedNode){toast('请先选择节点');return}
+  // 仅复制当前标签文本为同级，不包含下级子节点
+  const node=new MindNode(selectedNode.text);
+  node.customWidth=selectedNode.customWidth;
+  node._bgColor=selectedNode._bgColor;
+  pushHistory();
+  if(!selectedNode.parent){
+    promoteRoot(node,false);
+  }else{
+    selectedNode.parent.insertAfter(node,selectedNode);
+    const lvl=getLevel(node);
+    if(lvl>=1){
+      if(lvl===1){
+        node._branchColor=pickBranchColor(null);
+      } else {
+        node._branchColor=getNodeBranchColor(selectedNode);
+      }
+      usedBranchColors.add(node._branchColor);
+    }
+  }
+  rebuildMap();render();selectNode(node);startInlineEdit(node,true);
+}
+
 function deleteNode(){
   if(browseMode){toast('浏览模式下不可删除');return}
   if(!selectedNode){toast('请先选择节点');return}
   if(!selectedNode.parent){toast('不能删除根节点');return}
   pushHistory();
   const p=selectedNode.parent;
-  p.removeChild(selectedNode);selectedNode=p;
+  const siblings=p.children;
+  const idx=siblings.indexOf(selectedNode);
+  p.removeChild(selectedNode);
+  // 优先聚焦到同级下一个，没有则同级上一个，再没有才去上级
+  let next=null;
+  if(idx<siblings.length)next=siblings[idx];
+  else if(siblings.length>0)next=siblings[siblings.length-1];
+  selectedNode=next||p;
   rebuildMap();render();toast('已删除');
 }
 
