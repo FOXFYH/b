@@ -213,6 +213,24 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
     </div>
   </div>
 </div>
+<div id="batch-insert-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:200;justify-content:center;align-items:center">
+  <div class="modal-box" style="width:520px">
+    <h3>批量插入标签</h3>
+    <label>格式说明：每行一个标签，用缩进（空格或Tab）表示层级关系</label>
+    <textarea id="batchInsertText" rows="10" placeholder="一级标签（子级）&#10;  二级标签（下下级）&#10;    三级标签&#10;  另一个二级标签&#10;另一个一级标签" style="font-family:monospace;font-size:13px"></textarea>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+      <label style="font-size:12px;color:#666;margin:0">插入方式：</label>
+      <select id="batchInsertMode" style="padding:3px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px">
+        <option value="child">作为子级插入</option>
+        <option value="sibling">作为同级插入</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <button onclick="closeBatchInsert()">取消</button>
+      <button class="primary" onclick="doBatchInsert()">插入</button>
+    </div>
+  </div>
+</div>
 <div id="import-modal">
   <div class="modal-box">
     <h3>新建思维导图</h3>
@@ -233,6 +251,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
 <div id="context-menu">
   <div class="menu-item" onclick="addSibling()">➕ 添加同级</div>
   <div class="menu-item" onclick="addChild()">➕ 添加子级</div>
+  <div class="menu-item" onclick="showBatchInsertModal()">📝 批量插入</div>
   <div class="menu-item" onclick="copyAsSibling()">📋 复制为同级</div>
   <div class="menu-item" onclick="editNodeModal()">✏️ 编辑</div>
   <div class="menu-sep"></div>
@@ -529,11 +548,15 @@ function updateSyncButton(icon){
 function updateVersionInfo(){
   const el=document.getElementById('versionInfo');
   if(!el)return;
-  if(!currentFileName){el.textContent='';return}
+  if(!currentFileName){el.textContent='';el.title='';return}
   const ver=getFileVersion(currentFileName);
   const meta=getFileMeta(currentFileName);
   const idStr=meta&&meta.id?' ID:'+meta.id:'';
+  const ownerStr=meta&&meta.owner?' '+meta.owner:'';
+  const folderStr=meta&&meta.folder?' 文件夹:'+meta.folder:'';
   el.textContent=currentFileName+' v'+ver+idStr;
+  // 悬浮显示完整信息
+  el.title=currentFileName+' v'+ver+idStr+ownerStr+folderStr;
 }
 
 function getFileMeta(name){
@@ -1403,6 +1426,114 @@ function editNodeModal(){
   document.getElementById('editText').value=selectedNode.text;
   document.getElementById('edit-modal').classList.add('show');
   document.getElementById('editText').focus();
+}
+
+// 批量插入：弹出编辑框
+function showBatchInsertModal(){
+  if(browseMode){toast('浏览模式下不可添加');return}
+  if(!selectedNode){toast('请先选择节点');return}
+  hideContextMenu();
+  document.getElementById('batchInsertText').value='';
+  document.getElementById('batch-insert-modal').style.display='flex';
+  document.getElementById('batchInsertText').focus();
+}
+
+function closeBatchInsert(){
+  document.getElementById('batch-insert-modal').style.display='none';
+}
+
+// 解析缩进文本为树结构，返回根节点数组
+// 每行：缩进数决定层级，0=第一层（直接子级/同级）
+function parseIndentedText(text){
+  const lines=text.split('\n').filter(l=>l.trim());
+  if(lines.length===0)return[];
+  // 检测缩进单位（取第一个有缩进的行的缩进量）
+  let indentUnit=2; // 默认2空格
+  for(const line of lines){
+    const spaces=line.match(/^(\s*)/)[1];
+    const tabCount=(spaces.match(/\t/g)||[]).length;
+    const spaceCount=spaces.length-tabCount*4; // Tab算4空格
+    const total=tabCount*4+spaceCount;
+    if(total>0){indentUnit=total;break}
+  }
+  // 构建树
+  const roots=[];
+  const stack=[{level:-1,node:null}]; // {level, node}
+  for(const line of lines){
+    const spaces=line.match(/^(\s*)/)[1];
+    const tabCount=(spaces.match(/\t/g)||[]).length;
+    const spaceCount=spaces.length-tabCount*4;
+    const level=Math.round((tabCount*4+spaceCount)/indentUnit);
+    const node=new MindNode(line.trim());
+    // 找到父节点：栈中level比当前小的最近一个
+    while(stack.length>1&&stack[stack.length-1].level>=level)stack.pop();
+    const parent=stack[stack.length-1].node;
+    if(parent){
+      parent.addChild(node);
+    }else{
+      roots.push(node);
+    }
+    stack.push({level,node});
+  }
+  return roots;
+}
+
+// 执行批量插入
+function doBatchInsert(){
+  if(!selectedNode){closeBatchInsert();return}
+  const text=document.getElementById('batchInsertText').value;
+  if(!text.trim()){toast('请输入标签内容');return}
+  const mode=document.getElementById('batchInsertMode').value;
+  const roots=parseIndentedText(text);
+  if(roots.length===0){toast('未解析到有效标签');return}
+  pushHistory();
+  // 展开选中节点
+  if(selectedNode.collapsed)selectedNode.collapsed=false;
+  let count=0;
+  if(mode==='child'){
+    // 作为子级插入：roots直接加为selectedNode的子节点
+    for(const r of roots){
+      selectedNode.addChild(r);
+      count+=1+r.countDescendants();
+    }
+  }else{
+    // 作为同级插入：roots加为selectedNode的兄弟
+    const parent=selectedNode.parent;
+    if(!parent){
+      // 没有父节点（根节点），用promoteRoot
+      for(const r of roots){
+        promoteRoot(r,false);
+        count+=1+r.countDescendants();
+      }
+    }else{
+      let ref=selectedNode;
+      for(const r of roots){
+        parent.insertAfter(r,ref);
+        ref=r;
+        count+=1+r.countDescendants();
+      }
+    }
+  }
+  // 为新增节点分配分支颜色
+  for(const r of roots){
+    const lvl=getLevel(r);
+    if(lvl>=1){
+      r._branchColor=lvl===1?pickBranchColor(null):getNodeBranchColor(selectedNode);
+      usedBranchColors.add(r._branchColor);
+    }
+    // 递归设置子孙分支颜色
+    (function walk(n){
+      for(const c of n.children){
+        const cl=getLevel(c);
+        if(cl===1){c._branchColor=pickBranchColor(null);usedBranchColors.add(c._branchColor)}
+        else if(cl>1){c._branchColor=getNodeBranchColor(n)}
+        walk(c);
+      }
+    })(r);
+  }
+  closeBatchInsert();
+  rebuildMap();render();
+  toast('已插入 '+count+' 个标签');
 }
 
 function toggleCollapse(){
@@ -2813,6 +2944,9 @@ document.getElementById('editText').addEventListener('keydown',function(e){
 });
 document.getElementById('importText').addEventListener('keydown',function(e){
   if(e.key==='Escape')closeImport();
+});
+document.getElementById('batchInsertText').addEventListener('keydown',function(e){
+  if(e.key==='Escape')closeBatchInsert();
 });
 
 let touchStartTime=0,touchStartNode=null,touchMoved=false;
