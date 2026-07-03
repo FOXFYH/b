@@ -1464,7 +1464,22 @@ function parseIndentedText(text){
     const tabCount=(spaces.match(/\t/g)||[]).length;
     const spaceCount=spaces.length-tabCount*4;
     const level=Math.round((tabCount*4+spaceCount)/indentUnit);
-    const node=new MindNode(line.trim());
+    // 解析行末标记后缀（与 parseTitle 逻辑一致）
+    // 支持： ◆宽 ★连线色 ■底色 ◈收起，顺序解析（导出顺序：◈★■◆，解析反序）
+    let s=line.trim();
+    let collapsed=false,customWidth=0,parsedColor=null,parsedBgColor='';
+    const wm=s.match(/ ◆(\d+)$/);if(wm){customWidth=parseInt(wm[1]);s=s.slice(0,-wm[0].length)}
+    const bm=s.match(/ ■(\S+)$/);if(bm){parsedBgColor=bm[1];s=s.slice(0,-bm[0].length)}
+    const cm=s.match(/ ★([^ ]+)$/);if(cm){parsedColor=cm[1];s=s.slice(0,-cm[0].length)}
+    if(s.endsWith('◈')){collapsed=true;s=s.slice(0,-1).trimEnd()}
+    s=s.replace(/\\n/g,'\n');
+    const node=new MindNode(s);
+    node.collapsed=collapsed;
+    node.customWidth=customWidth;
+    if(parsedBgColor)node._bgColor=parsedBgColor;
+    // 批量导入时统一用 _userColor 保存用户指定颜色
+    // 渲染时 getNodeBranchColor 优先用 _userColor，子节点也会继承
+    if(parsedColor)node._userColor=parsedColor;
     // 找到父节点：栈中level比当前小的最近一个
     while(stack.length>1&&stack[stack.length-1].level>=level)stack.pop();
     const parent=stack[stack.length-1].node;

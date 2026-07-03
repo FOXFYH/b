@@ -1,0 +1,654 @@
+============================================================
+文件管理器 ID制文件夹系统 改造说明（v2.1）
+============================================================
+用途：本说明用于将旧版"路径字符串制"文件管理器改造为
+      "ID制"文件夹系统。多个项目复用同一文件管理器时，
+      可按本说明逐项用AI辅助修正。
+适用文件：文件管理.HTML（前端脚本）
+云端脚本：无需修改（WPS云端脚本不动）
+
+v2.1 更新（重要修正）：
+  · 新增第十三节"云端API正确调用方式（必读）"
+  · 所有云端写操作统一用【纯ID模式】，不再依赖行号
+  · 修复"创建文件夹失败 行号超出范围"
+  · 修复"删除文件夹显示成功但实际未删"
+  · 修复"移动/重命名依赖行号导致失败"
+  · 更新AI修正指引与验收清单
+============================================================
+
+
+────────────────────────────────────────────────────────────
+一、设计理念（先理解再动手）
+────────────────────────────────────────────────────────────
+
+【旧方案 - 路径字符串制】
+  · "文件夹路径"列存完整路径字符串，如 "工作/项目A/子项"
+  · 重命名/移动文件夹时，需批量修改所有子孙的路径字符串
+  · 维护成本高，易出错
+
+【新方案 - ID制】
+  · "文件夹路径"列只存【父文件夹ID】（FOLDER_xxx）
+  · 空字符串 = 根目录
+  · 文件夹本身也是一行登记记录：
+      ID        = FOLDER_xxxxxxxx（前缀FOLDER_）
+      文件名    = 文件夹显示名
+      内容      = 空
+      文件夹路径 = 该文件夹的父文件夹ID（空=根目录）
+  · 重命名文件夹：只改该FOLDER_行的"文件名"字段
+                  子孙无需改动（他们靠ID引用父文件夹）
+  · 移动文件夹/文件：只改该行的"文件夹路径"字段为目标ID
+  · 删除文件夹：递归删除该文件夹及其所有子孙（按ID查子孙）
+
+
+────────────────────────────────────────────────────────────
+二、改造前准备（重要！）
+────────────────────────────────────────────────────────────
+
+1. 备份原文件管理.HTML
+2. 清空WPS多维表格中所有"文件夹路径"列的内容
+   （让所有文件回到根目录，避免新旧路径混用）
+3. 删除多维表格中所有旧的文件夹登记行（如有）
+4. 确认WPS云端脚本（WPS云端判断脚本.js）无需改动
+   （云端只负责读写行，不关心路径含义）
+
+
+────────────────────────────────────────────────────────────
+三、需要新增的辅助函数
+────────────────────────────────────────────────────────────
+
+在文件管理.HTML的<script>中，建议放在getFileIndex等
+索引函数附近，新增以下7个辅助函数：
+
+------------------------------------------------------------
+// 1. 判断ID是否为文件夹ID（前缀FOLDER_）
+function isFolderId(id){
+  return !!(id&&String(id).startsWith('FOLDER_'));
+}
+
+// 2. 判断索引项是否为文件夹
+function isFolderItem(item){
+  return item&&isFolderId(item.id);
+}
+
+// 3. 根据文件夹ID获取文件夹显示名
+//    先查本地索引，再查云端缓存
+function getFolderName(folderId){
+  if(!folderId)return '';
+  const idx=getFileIndex();
+  const f=idx.find(x=>x.id===folderId);
+  if(f)return f.name;
+  const cf=cloudFileCache.get(folderId);
+  return cf?(cf.文件名||''):'';
+}
+
+// 4. 根据文件夹ID获取父文件夹ID
+//    先查本地索引的folder字段，再查云端缓存的"文件夹路径"
+function getParentFolderId(folderId){
+  if(!folderId)return '';
+  const idx=getFileIndex();
+  const f=idx.find(x=>x.id===folderId);
+  if(f)return f.folder||'';
+  const cf=cloudFileCache.get(folderId);
+  return cf?(cf.文件夹路径||''):'';
+}
+
+// 5. 根据文件夹ID获取完整路径字符串（用于显示面包屑）
+//    从当前ID向上追溯父链，构建路径数组
+//    visited集合防止循环引用导致死循环
+function getFolderPathString(folderId){
+  if(!folderId)return '';
+  const parts=[];
+  let currentId=folderId;
+  const visited=new Set();
+  while(currentId&&!visited.has(currentId)){
+    visited.add(currentId);
+    const name=getFolderName(currentId);
+    if(!name)break;
+    parts.unshift(name);
+    currentId=getParentFolderId(currentId);
+  }
+  return parts.join('/');
+}
+
+// 6. 获取直接子文件夹列表（返回[{id,name}]数组）
+//    合并本地索引和云端缓存，去重
+function getSubFolderIds(parentFolderId){
+  const subs=[];
+  const seenIds=new Set();
+  const idx=getFileIndex();
+  for(const f of idx){
+    if(isFolderItem(f)&&(f.folder||'')===parentFolderId&&!seenIds.has(f.id)){
+      subs.push({id:f.id,name:f.name});
+      seenIds.add(f.id);
+    }
+  }
+  for(const[id,cf]of cloudFileCache){
+    if(isFolderId(id)&&(cf.文件夹路径||'')===parentFolderId&&!seenIds.has(id)){
+      subs.push({id,name:cf.文件名||''});
+      seenIds.add(id);
+    }
+  }
+  return subs.sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+// 7. 获取直接子文件列表（非文件夹）
+//    合并本地索引和云端缓存，去重
+function getFilesInFolder(folderId){
+  const idx=getFileIndex();
+  const localIds=new Set();
+  const files=[];
+  for(const f of idx){
+    if(!isFolderItem(f)&&(f.folder||'')===folderId){
+      files.push({...f,source:'local'});
+      localIds.add(f.id);
+    }
+  }
+  for(const[id,cf]of cloudFileCache){
+    if(!localIds.has(id)&&!isFolderId(id)){
+      if((cf.文件夹路径||'')===folderId&&cf.文件名&&cf.文件名.trim()){
+        files.push({id,name:cf.文件名,version:parseInt(cf.版本号||'0'),folder:folderId,source:'cloud'});
+      }
+    }
+  }
+  return files.sort((a,b)=>(b.time||0)-(a.time||0)||a.name.localeCompare(b.name));
+}
+
+// 8. 从云端索引数据递归获取所有子孙ID（文件+子文件夹）
+//    用于删除文件夹时找出全部子孙
+function getAllDescendantsFromCloud(cloudFiles,folderId){
+  const result=[];
+  const queue=[folderId];
+  const visited=new Set();
+  while(queue.length>0){
+    const currentId=queue.shift();
+    if(visited.has(currentId))continue;
+    visited.add(currentId);
+    for(const cf of cloudFiles){
+      if(!cf.ID||cf.ID===currentId)continue;
+      const parentFolder=cf.文件夹路径||'';
+      if(parentFolder===currentId){
+        result.push(cf.ID);
+        if(isFolderId(cf.ID))queue.push(cf.ID);
+      }
+    }
+  }
+  return result;
+}
+
+// 9. 从本地索引+缓存递归获取所有子孙ID（备用）
+function getAllDescendants(folderId){
+  const result=[];
+  const queue=[folderId];
+  const visited=new Set();
+  while(queue.length>0){
+    const currentId=queue.shift();
+    if(visited.has(currentId))continue;
+    visited.add(currentId);
+    const idx=getFileIndex();
+    for(const f of idx){
+      if((f.folder||'')===currentId&&f.id!==currentId){
+        result.push(f.id);
+        if(isFolderItem(f))queue.push(f.id);
+      }
+    }
+    for(const[id,cf]of cloudFileCache){
+      if(id!==currentId&&(cf.文件夹路径||'')===currentId){
+        if(!result.includes(id))result.push(id);
+        if(isFolderId(id))queue.push(id);
+      }
+    }
+  }
+  return result;
+}
+------------------------------------------------------------
+
+
+────────────────────────────────────────────────────────────
+四、需要重写的核心函数
+────────────────────────────────────────────────────────────
+
+【4.1 createFolder - 创建文件夹】
+旧：拼接完整路径字符串写入云端
+新：生成FOLDER_前缀ID，"文件夹路径"列存父文件夹ID
+    云端写入成功后调用refreshCloudIndex刷新本地
+关键点：
+  · folderId = 'FOLDER_' + genFileId()
+  · 数据.文件夹路径 = currentFolder（父文件夹ID，空=根目录）
+  · 数据.文件名 = 文件夹显示名
+  · 数据.内容 = ''
+  · 云端写入用【ID+本地新文件标识模式】（见第十三节）
+    绝对不能用行号模式（会"行号超出范围"）
+  · 云端成功后才refreshCloudIndex，失败则不刷新
+
+【4.2 renameFolder - 重命名文件夹（新增）】
+旧：无此功能
+新：只改FOLDER_行的"文件名"字段，子孙不动
+关键点：
+  · 通过findFileInCloudById确认云端存在该文件夹
+  · 批量写入用【纯ID模式】（ID:folderId），不传行号
+  · 同父下重名校验（getSubFolderIds + 名称比对）
+  · 云端成功后才refreshCloudIndex
+
+【4.3 deleteFolder - 删除文件夹】
+旧：按路径前缀匹配删除（folderName或folderName+'/...'）
+新：按ID递归找出所有子孙ID，逐个删除
+关键点：
+  · 先调用callCloudAPI('读取索引')获取最新云端数据
+  · getAllDescendantsFromCloud(cloudFiles, folderId)
+    递归找出所有子孙ID
+  · allIds = [folderId, ...descendantIds]
+  · 逐个调用【删除行】操作，只传{ID:id}，不传行号
+    （读取索引不返回_行号，传行号会跳过所有行导致"显示
+     成功但实际未删"）
+  · 文件夹无拆分片段，文件需cleanupCloudFragments
+  · 删除失败立即中止，但仍刷新一次以同步已删部分
+  · 若当前所在文件夹被删除，currentFolder清空回根目录
+
+【4.4 moveToFolder - 移动文件/文件夹（原moveFileToFolder）】
+旧：参数folderName是路径字符串
+新：参数targetFolderId是文件夹ID（空=根目录）
+关键点：
+  · 移动文件夹时禁止移入自身或其子孙（防环）
+    用getAllDescendantsFromCloud检查
+  · 更新主ID行的"文件夹路径"字段为targetFolderId
+  · 用【纯ID模式】批量写入（ID:itemId），不传行号
+  · 若是文件且有拆分片段，同步更新所有片段的文件夹路径
+    （片段也用纯ID模式，ID:suffixId）
+  · 云端成功后才refreshCloudIndex
+
+【4.5 showMoveFileDialog - 移动对话框】
+旧：按路径字符串导航（getSubFoldersList）
+新：按文件夹ID导航（getSubFolderIds）
+关键点：
+  · 支持移动文件和移动文件夹
+  · 面包屑显示从根到当前的完整路径（向上追溯父链）
+  · 移动文件夹时，自身及子孙文件夹不可进入（禁用按钮）
+
+
+────────────────────────────────────────────────────────────
+五、需要重写的UI函数
+────────────────────────────────────────────────────────────
+
+【5.1 renderFileList - 渲染文件列表】
+旧：按路径字符串过滤显示
+新：按文件夹ID过滤显示
+关键点：
+  · 子文件夹：getSubFolderIds(currentFolder)
+  · 本地文件：idx.filter(f => !isFolderItem(f) && (f.folder||'')===currentFolder)
+  · 返回上级：getParentFolderId(currentFolder)
+  · data-folder属性直接存文件夹ID（不再encodeURIComponent）
+  · 云端文件夹也要显示（cloudFileCache中isFolderId(cid)的项）
+  · 云端文件跳过拆分片段（parseCharCountStr.part>1）
+
+【5.2 navigateFolder - 导航到文件夹】
+旧：参数是路径字符串，需decodeURIComponent
+新：参数是文件夹ID（空=根目录）
+关键点：
+  · currentFolder = folderId || ''
+
+【5.3 updateFolderPath - 更新路径面包屑】
+旧：按'/'分割路径字符串
+新：从当前ID向上追溯父链，构建路径数组
+关键点：
+  · 用getFolderName和getParentFolderId向上追溯
+  · visited集合防循环
+  · 每个面包屑可点击navigateFolder到该ID
+
+
+────────────────────────────────────────────────────────────
+六、需要修改的事件处理器
+────────────────────────────────────────────────────────────
+
+【6.1 单击事件（fileList click）】
+旧：data-del-folder用encodeURIComponent，selectedFolderPath存路径
+新：data-del-folder直接存ID，selectedFolderId存ID
+关键点：
+  · deleteFolder(id) 直接传ID，不再decodeURIComponent
+  · selectedFolderId = folderItem.getAttribute('data-folder')
+  · 选中文件夹时清空selectedFileId
+
+【6.2 双击事件（fileList dblclick）】
+旧：navigateFolder(decodeURIComponent(...))
+新：navigateFolder(folderItem.getAttribute('data-folder'))
+
+【6.3 deleteFileById - 删除文件】
+新增守卫：if(isFolderId(id)){deleteFolder(id);return;}
+防止误删文件夹登记行（文件夹必须通过deleteFolder递归删除）
+
+
+────────────────────────────────────────────────────────────
+七、需要修改的同步函数
+────────────────────────────────────────────────────────────
+
+【7.1 refreshCloudIndex - 刷新云端索引】
+旧：只处理普通文件
+新：识别FOLDER_前缀ID作为文件夹登记行
+关键点：
+  · cloudFileCache照常更新（ID为key）
+  · 删除云端不存在的本地条目（含文件夹）
+  · 新增云端条目时判断isFolderId(cf.ID)：
+    - 文件夹：version=0, contentLength=0
+    - 文件：照常处理
+  · 跳过拆分片段（parseCharCountStr.part>1）
+
+【7.2 showRenameDialog - 改名对话框】
+新增：优先处理选中的文件夹重命名
+关键点：
+  · if(selectedFolderId && isFolderId(selectedFolderId)){
+      renameFolder(selectedFolderId);
+      return;
+    }
+  · 否则按原逻辑处理文件重命名
+
+
+────────────────────────────────────────────────────────────
+八、变量重命名
+────────────────────────────────────────────────────────────
+
+全局变量：
+  · selectedFolderPath → selectedFolderId
+    注释更新为"选中的文件夹ID（FOLDER_xxx）"
+
+currentFolder变量名保持不变，但含义改变：
+  旧：路径字符串（如"工作/项目A"）
+  新：文件夹ID（如"FOLDER_1234567890"，空=根目录）
+
+
+────────────────────────────────────────────────────────────
+九、云端数据格式示例
+────────────────────────────────────────────────────────────
+
+【根目录下的文件】
+  ID: 1234567890
+  文件名: 我的脑图.json
+  内容: {...}
+  版本号: 5
+  文件夹路径: （空，表示根目录）
+
+【根目录下的文件夹"工作"】
+  ID: FOLDER_9876543210
+  文件名: 工作
+  内容: （空）
+  版本号: 0
+  文件夹路径: （空，表示根目录）
+
+【"工作"文件夹下的文件】
+  ID: 1111111111
+  文件名: 周报.json
+  内容: {...}
+  版本号: 3
+  文件夹路径: FOLDER_9876543210  ← 指向"工作"文件夹的ID
+
+【"工作"文件夹下的子文件夹"项目A"】
+  ID: FOLDER_5555555555
+  文件名: 项目A
+  内容: （空）
+  版本号: 0
+  文件夹路径: FOLDER_9876543210  ← 指向"工作"文件夹的ID
+
+【"项目A"文件夹下的文件】
+  ID: 2222222222
+  文件名: 需求文档.json
+  内容: {...}
+  版本号: 2
+  文件夹路径: FOLDER_5555555555  ← 指向"项目A"文件夹的ID
+
+
+────────────────────────────────────────────────────────────
+十、操作流程示例
+────────────────────────────────────────────────────────────
+
+【创建文件夹"工作"在根目录】
+  1. currentFolder=''（根目录）
+  2. 生成folderId='FOLDER_'+genFileId()
+  3. 云端写入（ID+本地新文件标识模式）：
+       callCloudAPI('批量写入',{
+         ID:folderId,
+         本地新文件标识:'true',
+         数据:{ID:folderId,文件名:'工作',内容:'',
+               版本号:'0',文件夹路径:'',
+               最后上传发起时间:formatBeijingTime(netTime)}
+       })
+  4. 成功后refreshCloudIndex
+
+【重命名"工作"为"工作备份"】
+  1. 选中"工作"文件夹，selectedFolderId='FOLDER_9876543210'
+  2. showRenameDialog检测到是文件夹，调用renameFolder
+  3. findFileInCloudById('FOLDER_9876543210')确认云端存在
+  4. 云端写入（纯ID模式）：
+       callCloudAPI('批量写入',{
+         ID:'FOLDER_9876543210',
+         数据:{ID:'FOLDER_9876543210',文件名:'工作备份',
+               内容:'',版本号:cf.版本号||'0',
+               文件夹路径:cf.文件夹路径||'',
+               最后上传发起时间:formatBeijingTime(netTime)}
+       })
+  5. 成功后refreshCloudIndex
+  注：子孙的"文件夹路径"字段无需改动！
+
+【移动文件到"工作"文件夹】
+  1. 选中文件，selectedFileId='1234567890'
+  2. showMoveFileDialog弹出，导航到"工作"文件夹
+  3. 点击"移动到此文件夹"，targetFolderId='FOLDER_9876543210'
+  4. moveToFolder('1234567890', 'FOLDER_9876543210')
+  5. 云端写入（纯ID模式）该文件的"文件夹路径"='FOLDER_9876543210'
+  6. 若有拆分片段，同步更新所有片段的"文件夹路径"
+     （片段也用纯ID模式：ID:suffixId）
+  7. 成功后refreshCloudIndex
+
+【删除"工作"文件夹】
+  1. 点击"工作"文件夹的✕按钮
+  2. deleteFolder('FOLDER_9876543210')
+  3. 读取云端索引，getAllDescendantsFromCloud找出所有子孙ID
+     假设返回 ['1111111111', 'FOLDER_5555555555', '2222222222']
+  4. allIds = ['FOLDER_9876543210', '1111111111', 'FOLDER_5555555555', '2222222222']
+  5. 确认对话框显示"该文件夹及其内部 3 个子项将一并删除"
+  6. 逐个删除云端行（只传{ID:id}，不传行号）：
+       for(const id of allIds){
+         await callCloudAPI('删除行',{ID:id});
+         if(!isFolderId(id))await cleanupCloudFragments(id,0);
+       }
+  7. 成功后refreshCloudIndex
+
+
+────────────────────────────────────────────────────────────
+十一、AI修正指引（给AI的提示词模板）
+────────────────────────────────────────────────────────────
+
+将本说明连同目标项目的"文件管理.HTML"一起提供给AI，
+使用以下提示词：
+
+  请按《文件管理器 ID制文件夹系统 改造说明 v2.1》改造本项目的
+  文件管理.HTML。要求：
+  1. 新增第三节的9个辅助函数（isFolderId/isFolderItem/
+     getFolderName/getParentFolderId/getFolderPathString/
+     getSubFolderIds/getFilesInFolder/getAllDescendantsFromCloud/
+     getAllDescendants）
+  2. 重写第四节的核心函数（createFolder/renameFolder/
+     deleteFolder/moveToFolder/showMoveFileDialog）
+  3. 重写第五节的UI函数（renderFileList/navigateFolder/
+     updateFolderPath）
+  4. 修改第六节的事件处理器（单击/双击/deleteFileById守卫）
+  5. 修改第七节的同步函数（refreshCloudIndex/showRenameDialog）
+  6. 重命名第八节的变量（selectedFolderPath→selectedFolderId）
+  7. 删除所有旧的路径字符串制函数（如getSubFolders等）
+  8. 云端脚本不动
+  9. 【关键】所有云端写操作必须用第十三节的"纯ID模式"，
+     绝对不能依赖行号（_行号字段），否则会出现：
+     - 创建文件夹"行号超出范围"
+     - 删除文件夹"显示成功但实际未删"
+     - 移动/重命名失败
+  10. 改造完成后检查：
+     - 无语法错误
+     - 无遗留旧引用（selectedFolderPath/moveFileToFolder/getSubFolders）
+     - 无"行号:"调用批量写入（grep确认0处）
+     - 无"_行号"依赖（grep确认0处）
+
+
+────────────────────────────────────────────────────────────
+十二、验收清单
+────────────────────────────────────────────────────────────
+
+改造完成后逐项验证：
+
+  □ 1. 根目录能正常显示所有文件和文件夹
+  □ 2. 双击文件夹能进入，路径面包屑正确显示
+  □ 3. 点击"返回上级"能回到父文件夹
+  □ 4. 新建文件夹：在当前文件夹下创建，云端出现FOLDER_行
+       （不报"行号超出范围"）
+  □ 5. 重命名文件夹：选中文件夹后点"改名"，云端文件名更新
+       子孙的文件夹路径字段不变
+  □ 6. 删除文件夹：弹出确认显示子项数量，确认后云端整树删除
+       （实际删除，不是"显示成功但还在"）
+  □ 7. 移动文件：选中文件→移动到→选目标文件夹→云端路径更新
+  □ 8. 移动文件夹：选中文件夹→移动到→禁止移入自身/子孙
+  □ 9. 刷新按钮：能正确识别FOLDER_前缀的文件夹登记行
+  □ 10. 云端文件夹在本地未缓存时，列表中显示"仅云端"
+  □ 11. 拆分片段的文件夹路径同步更新（移动大文件时）
+  □ 12. 无selectedFolderPath/moveFileToFolder/getSubFolders等旧引用
+  □ 13. 【v2.1新增】grep "行号:" 确认0处（批量写入全用ID模式）
+  □ 14. 【v2.1新增】grep "_行号" 确认0处（不依赖行号字段）
+  □ 15. 【v2.1新增】创建文件夹不报"行号超出范围"
+  □ 16. 【v2.1新增】删除文件夹后云端实际删除（刷新后消失）
+
+
+────────────────────────────────────────────────────────────
+十三、云端API正确调用方式（必读 v2.1新增）
+────────────────────────────────────────────────────────────
+
+【背景】
+  旧版代码依赖行号调用云端"批量写入"和"删除行"，导致两类
+  严重问题：
+  1. 创建文件夹时前端findFirstEmptyRow()返回maxRow+1，
+     云端检查 rowNum > maxRow → "行号超出范围"
+  2. 删除文件夹时"读取索引"不返回_行号字段，
+     if(!row._行号)continue 跳过所有行 → "显示成功但实际未删"
+
+【云端脚本语义（WPS云端判断脚本.js v4.0）】
+
+  ── 删除行 ──
+  参数：只需 {ID: 文件ID}
+  云端逻辑：遍历表格从下往上，删除所有ID匹配的行
+  注意：不需要行号！传行号也会被忽略，但读取索引不返回
+        _行号，依赖它会跳过所有行
+
+  ── 批量写入 ──
+  支持两种模式：
+
+  模式A：纯ID模式（推荐，统一用这个）
+    参数：{ID: 文件ID, 数据: {...}}
+    云端逻辑：
+      1. findRowById(ID) 定位行
+      2. 找到 → 更新该行（不检查行号范围）
+      3. 找不到 → 返回"云端未找到此ID"错误
+
+  模式B：ID+本地新文件标识模式（新建时用）
+    参数：{ID: 文件ID, 本地新文件标识:'true', 数据: {...}}
+    云端逻辑：
+      1. findRowById(ID) 定位行
+      2. 找到 → 更新该行
+      3. 找不到 → findEmptyRow() 自动找空行新建
+      4. findEmptyRow 先找ID为空的行，找不到才返回maxRow+1
+      5. 不检查行号范围，不会"行号超出范围"
+
+  模式C：行号模式（禁用！）
+    参数：{行号: N, 数据: {...}}
+    云端逻辑：
+      1. 检查 rowNum < 2 || rowNum > maxRow → "行号超出范围"
+      2. 通过则写入指定行
+    问题：
+      - 前端findFirstEmptyRow返回maxRow+1 → 越界
+      - 必须先调用findFirstEmptyRow → 多一次网络请求
+
+【正确用法汇总】
+
+  ── 创建文件夹/新建文件 ──
+  用模式B（ID+本地新文件标识）：
+    callCloudAPI('批量写入',{
+      ID:folderId,
+      本地新文件标识:'true',
+      数据:{ID:folderId,文件名:...,内容:'',版本号:'0',
+            文件夹路径:currentFolder||'',
+            最后上传发起时间:formatBeijingTime(netTime)}
+    })
+
+  ── 更新已有行（重命名/移动/保存） ──
+  用模式A（纯ID）：
+    callCloudAPI('批量写入',{
+      ID:itemId,
+      数据:{ID:itemId,文件名:...,文件夹路径:...,
+            最后上传发起时间:formatBeijingTime(netTime)}
+    })
+
+  ── 删除行 ──
+  只传ID：
+    callCloudAPI('删除行',{ID:id})
+
+  ── 拆分片段写入 ──
+  统一用模式B（ID+本地新文件标识）：
+    callCloudAPI('批量写入',{
+      ID:p.id,
+      本地新文件标识:'true',
+      数据:{ID:p.id,文件名:...,内容:p.content,
+            版本号:version.toString(),拥有者:owner||'',
+            文件夹路径:folder||'',内容字符数:p.charCountStr,
+            创建日期:createTime||'',
+            最后上传发起时间:lastUploadTime||'',
+            最后编辑时间:lastEditTime||''}
+    })
+
+【禁用清单】
+  ✗ 不要调用 findFirstEmptyRow()（多余且易越界）
+  ✗ 不要用 行号: 参数调批量写入（会触发范围检查）
+  ✗ 不要依赖 cloudResult.file._行号（读取索引不返回此字段）
+  ✗ 不要在删除行时传行号（无意义，云端只看ID）
+
+【grep自检命令】
+  改造完成后在文件管理.HTML中执行以下grep，必须0匹配：
+  · grep "行号:" → 0处（批量写入全用ID模式）
+  · grep "_行号" → 0处（不依赖行号字段）
+  · grep "findFirstEmptyRow" → 最多1处（函数定义本身可保留）
+
+
+────────────────────────────────────────────────────────────
+十四、v2.1 修复记录（本次更新）
+────────────────────────────────────────────────────────────
+
+【问题1：创建文件夹失败 行号超出范围】
+  原因：createFolder用findFirstEmptyRow()获取行号，
+        返回maxRow+1，云端检查rowNum>maxRow报错
+  修复：改用ID+本地新文件标识模式，云端findEmptyRow自动找空行
+
+【问题2：删除文件夹显示成功但实际未删】
+  原因：deleteFolder依赖cloudFiles.find(cf=>cf.ID===id)._行号，
+        但"读取索引"不返回_行号字段，if(!row._行号)continue
+        跳过所有行，什么都没删，但代码继续执行显示"已删除"
+  修复：删除行只传{ID:id}，不依赖行号
+
+【问题3：移动/重命名依赖行号导致失败】
+  原因：moveToFolder/renameFolder用 行号:cf._行号 调批量写入，
+        虽然findFileInCloudById("查找"操作)返回_行号能工作，
+        但为一致性和健壮性，统一改为纯ID模式
+  修复：批量写入用 ID:itemId，不传行号
+
+【问题4：writeFileToCloudWithSplit新建文件/片段越界】
+  原因：新建文件/片段用findFirstEmptyRow获取行号，可能越界
+  修复：统一用ID+本地新文件标识模式，已有行云端自己findRowById
+
+【本次修复的函数清单】
+  · createFolder - 创建文件夹
+  · renameFolder - 重命名文件夹
+  · deleteFolder - 删除文件夹
+  · moveToFolder - 移动文件/文件夹
+  · deleteFileById - 删除文件
+  · deleteNamedFile - 删除指定文件
+  · deleteCloudVersion - 删除云端版本
+  · cleanupCloudFragments - 清理拆分片段
+  · renameCurrentFile - 重命名当前文件
+  · writeFileToCloudWithSplit - 写入云端（含拆分）
+  · fileRenamed_local 事件处理
+  · fileDeleted_local 事件处理
+
+============================================================
+改造说明结束 v2.1
+============================================================
