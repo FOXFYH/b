@@ -153,6 +153,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   <button onclick="syncCurrentFileViaManager()" id="syncBtn" title="同步当前文件到云端">☁ 同步</button>
   <button onclick="openFileManagerFrame()">📁 文件</button>
   <button onclick="createNewMap()">+ 新建</button>
+  <button onclick="toggleTxtMode()" id="txtModeBtn" title="切换纯文本/思维导图编辑模式" style="background:#16a085;color:#fff;border-color:#128177">📝 TXT模式</button>
   <div class="toolbar-spacer"></div>
   <div id="searchBox">
     <input type="text" id="searchInput" placeholder="搜索标签..." oninput="onSearchInput()" onkeydown="onSearchKeydown(event)">
@@ -201,6 +202,14 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
     <div class="qm-item qm-danger" data-action="delete">删除</div>
     <div class="qm-item qm-more" data-action="more">+</div>
   </div>
+</div>
+
+<!-- TXT模式面板：覆盖在画布上，纯文本编辑 -->
+<div id="txtModePanel" style="display:none;position:fixed;top:32px;left:0;right:0;bottom:0;background:#fff;z-index:50;padding:8px 10px 10px;box-sizing:border-box;flex-direction:column">
+  <div style="font-size:12px;color:#555;margin-bottom:6px;background:#f0faf6;padding:6px 10px;border-radius:6px;border-left:3px solid #16a085;line-height:1.6;flex-shrink:0">
+    <b>TXT模式</b> · 行首 <code style="background:#e8f5ee;padding:1px 4px;border-radius:3px">—</code> 表示层级（多个=多层），兼容旧 Tab。标题与描述用 <kbd style="background:#eee;border:1px solid #ccc;border-radius:3px;padding:0 4px">Tab</kbd> 分隔。编辑器内 <kbd style="background:#eee;border:1px solid #ccc;border-radius:3px;padding:0 4px">Tab</kbd> 插入 <code style="background:#e8f5ee;padding:1px 4px;border-radius:3px">—</code>，<kbd style="background:#eee;border:1px solid #ccc;border-radius:3px;padding:0 4px">Shift+Tab</kbd> 删除行首 <code style="background:#e8f5ee;padding:1px 4px;border-radius:3px">—</code>。切回思维导图模式自动解析保存。
+  </div>
+  <textarea id="txtModeEditor" style="flex:1;width:100%;border:1px solid #ddd;border-radius:6px;font-family:Consolas,'Courier New',monospace;font-size:13px;line-height:1.6;resize:none;outline:none;padding:10px;box-sizing:border-box;tab-size:2" placeholder="根节点&#10;—子节点1&#10;—子节点2&#10;——孙节点"></textarea>
 </div>
 <div id="edit-modal">
   <div class="modal-box">
@@ -467,6 +476,7 @@ const DESC_LINE_HEIGHT=DESC_FONT_SIZE+2;
 const measureCtx=document.createElement('canvas').getContext('2d');
 
 let root=null,selectedNode=null,nodeMap={};
+let txtMode=false; // TXT模式开关：true=纯文本编辑，false=思维导图模式
 let panX=0,panY=0,zoom=1;
 let isPanning=false,panStartX=0,panStartY=0,panStartPanX=0,panStartPanY=0;
 let isDragging=false,dragNode=null,dragStartX=0,dragStartY=0;
@@ -623,8 +633,15 @@ function setLastSyncTime(t){
 function genFileId(){return Math.floor(1000000000+Math.random()*9000000000).toString()}
 
 function getContentHash() {
-  if (!root) return '';
-  const text = exportNodeText(root).trimEnd();
+  // TXT模式下用textarea内容算hash，否则用root导出文本
+  let text;
+  if (txtMode) {
+    const ta = document.getElementById('txtModeEditor');
+    text = ta ? ta.value : '';
+  } else {
+    if (!root) return '';
+    text = exportNodeText(root).trimEnd();
+  }
   let hash = 0;
   for (let i = 0; i < text.length; i++) {
     const char = text.charCodeAt(i);
@@ -638,12 +655,18 @@ let _autoSaveTimer = null;
 function startAutoSave(){
   stopAutoSave();
   _autoSaveTimer = setInterval(() => {
-    if (!root||!currentFileName) return;
+    if (!currentFileName) return;
+    if (!txtMode && !root) return;
     const now = Date.now();
     if (now - lastSaveTime < 5000) return;
     const currentHash = getContentHash();
     if (currentHash !== lastContentHash) {
-      const text = exportNodeText(root).trimEnd();
+      let text;
+      if (txtMode) {
+        text = document.getElementById('txtModeEditor').value;
+      } else {
+        text = exportNodeText(root).trimEnd();
+      }
       localStorage.setItem('mindmap_data', text);
       saveFileData(currentFileName, text);
       localStorage.setItem('mindmap_last_edit_time', new Date(now - new Date().getTimezoneOffset()*60000 + 8*3600000).toISOString().replace('T',' ').substring(0,19));
@@ -847,7 +870,8 @@ function parseText(text){
   for(const line of lines){
     if(!line.trim())continue;
     let level=0;
-    while(level<line.length&&line[level]==='\t')level++;
+    // 兼容旧制表符 \t 与新层级符号 —（U+2014），行首连续任一符号都计入层级
+    while(level<line.length&&(line[level]==='\t'||line[level]==='—'))level++;
     const content=line.substring(level);
     const ti=content.indexOf('\t');
     let nodeText,collapsed=false,customWidth=0,parsedColor=null,parsedBgColor='';
@@ -899,14 +923,14 @@ function exportNodeText(node,indent=0){
   if(nlIdx>=0){
     const title=node.text.substring(0,nlIdx)+collapseMark+colorMark+bgMark+widthMark;
     const desc=node.text.substring(nlIdx+1).replace(/\n/g,'\\n');
-    line='\t'.repeat(indent)+title+'\t'+desc;
+    line='—'.repeat(indent)+title+'\t'+desc;
   }else{
-    line='\t'.repeat(indent)+node.text+collapseMark+colorMark+bgMark+widthMark;
+    line='—'.repeat(indent)+node.text+collapseMark+colorMark+bgMark+widthMark;
   }
   let result=line+'\n';
   for(const c of node.children)result+=exportNodeText(c,indent+1);
   if(indent===0){
-    result+='\n(以下开始为本思维导图模板说明，勿增删)\n缩进=层级(\\t)，标题后\\t描述，标记缀末尾：◈=子项已收起 ★连线色 ■标签底色 ◆宽，换行用\\n\n示例：\n根节点\n\t主题一 ★#e74c3c\n\t\t子项A ■#2980b9\n\t\t子项B ◈\n\t主题二 ★#2980b9\n\t\t子项C\t描述文本\n\t\t子项D ◆300 ★#f1c40f ■#e74c3c\n（所有模板尾部自带以上信息 导入时自动屏蔽）\n';
+    result+='\n(以下开始为本思维导图模板说明，勿增删)\n缩进=层级(—)，标题后\\t描述，标记缀末尾：◈=子项已收起 ★连线色 ■标签底色 ◆宽，换行用\\n\n示例：\n根节点\n—主题一 ★#e74c3c\n——子项A ■#2980b9\n——子项B ◈\n—主题二 ★#2980b9\n——子项C\t描述文本\n——子项D ◆300 ★#f1c40f ■#e74c3c\n（所有模板尾部自带以上信息 导入时自动屏蔽）\n';
   }
   return result;
 }
@@ -1681,9 +1705,9 @@ function exportNodeTextClean(node,indent=0){
   if(nlIdx>=0){
     const title=node.text.substring(0,nlIdx);
     const desc=node.text.substring(nlIdx+1).replace(/\n/g,'\\n');
-    line='\t'.repeat(indent)+title+'\t'+desc;
+    line='—'.repeat(indent)+title+'\t'+desc;
   }else{
-    line='\t'.repeat(indent)+node.text;
+    line='—'.repeat(indent)+node.text;
   }
   let result=line+'\n';
   for(const c of node.children)result+=exportNodeTextClean(c,indent+1);
@@ -1774,7 +1798,84 @@ function getDefaultFileName(){
   return `新脑图${y}${m}${d}_${h}${min}.txt`;
 }
 
+// ============================================================
+// TXT模式：纯文本编辑，替代画布的思维导图编辑
+// ============================================================
+function toggleTxtMode(){
+  const panel=document.getElementById('txtModePanel');
+  const ta=document.getElementById('txtModeEditor');
+  const btn=document.getElementById('txtModeBtn');
+  if(!txtMode){
+    // 思维导图 → TXT：导出文本到textarea
+    if(!root){toast('请先打开或新建文件');return}
+    pushHistory();
+    ta.value=exportNodeText(root).trimEnd();
+    panel.style.display='flex';
+    btn.textContent='🎨 思维导图';
+    btn.style.background='#2980b9';
+    btn.style.borderColor='#1f6fa8';
+    txtMode=true;
+    // 重置hash基线，避免一进入就触发自动保存
+    lastContentHash=getContentHash();
+    lastSaveTime=Date.now();
+    setTimeout(()=>ta.focus(),50);
+    toast('已切换到TXT模式');
+  }else{
+    // TXT → 思维导图：解析textarea回树
+    const text=ta.value;
+    try{
+      const newRoot=parseText(text);
+      if(!newRoot||!newRoot.text){toast('解析失败：内容为空');return}
+      root=newRoot;selectedNode=null;
+      rebuildMap();render();
+      // 保存（含上传云端，由saveFileData内部触发文件管理器）
+      if(currentFileName){
+        const outText=exportNodeText(root).trimEnd();
+        localStorage.setItem('mindmap_data',outText);
+        saveFileData(currentFileName,outText);
+        lastContentHash=getContentHash();
+        lastSaveTime=Date.now();
+        postToFileManager({type:'contentChanged'});
+      }
+    }catch(e){
+      console.error('TXT模式解析失败:',e);
+      toast('解析失败：'+e.message);
+      return;
+    }
+    panel.style.display='none';
+    btn.textContent='📝 TXT模式';
+    btn.style.background='#16a085';
+    btn.style.borderColor='#128177';
+    txtMode=false;
+    toast('已切换回思维导图模式');
+  }
+}
+
+// TXT模式编辑器：Tab键插入层级符号—，Shift+Tab删除行首一个—
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Tab')return;
+  if(!txtMode)return;
+  const ta=document.getElementById('txtModeEditor');
+  if(!ta||document.activeElement!==ta)return;
+  e.preventDefault();
+  if(e.shiftKey){
+    const start=ta.selectionStart;
+    const before=ta.value.substring(0,start);
+    const lineStart=before.lastIndexOf('\n')+1;
+    if(ta.value.substring(lineStart,lineStart+1)==='—'){
+      ta.value=ta.value.substring(0,lineStart)+ta.value.substring(lineStart+1);
+      ta.selectionStart=ta.selectionEnd=start-1;
+    }
+  }else{
+    const start=ta.selectionStart,end=ta.selectionEnd;
+    ta.value=ta.value.substring(0,start)+'—'+ta.value.substring(end);
+    ta.selectionStart=ta.selectionEnd=start+1;
+  }
+});
+
 function createNewMap(){
+  // 进入新建前先退出TXT模式
+  if(txtMode){toggleTxtMode()}
   showImport();
 }
 
@@ -1788,7 +1889,7 @@ function doImport(){
     root=parseText(text);selectedNode=null;
   }else{
     const rootName=fileName.replace('.txt','');
-    root=parseText(rootName+'\n\t主题一\n\t主题二');
+    root=parseText(rootName+'\n—主题一\n—主题二');
     selectedNode=null;
   }
   currentFileName=fileName;
@@ -2088,6 +2189,15 @@ window.addEventListener('message',function(e){
     case 'fileSelected':
       break;
     case 'openFile':
+      // 打开新文件前强制退出TXT模式（不保存当前编辑，因为要切换文件）
+      if(txtMode){
+        txtMode=false;
+        document.getElementById('txtModePanel').style.display='none';
+        const _btn=document.getElementById('txtModeBtn');
+        _btn.textContent='📝 TXT模式';
+        _btn.style.background='#16a085';
+        _btn.style.borderColor='#128177';
+      }
       if(msg.name){
         if(msg.content!==undefined){
           pushHistory(false);
@@ -3156,14 +3266,14 @@ svgEl.addEventListener('touchend',function(e){
 },{passive:true});
 
 const SAMPLE_TEXT=`思维导图
-\t主题一
-\t\t子项A
-\t\t子项B
-\t\t\t细节1
-\t\t\t细节2
-\t主题二
-\t\t子项C
-\t\t子项D`;
+—主题一
+——子项A
+——子项B
+———细节1
+———细节2
+—主题二
+——子项C
+——子项D`;
 
 function initApp(){
   if(initApp._done)return;
