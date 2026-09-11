@@ -3360,6 +3360,22 @@ function initApp(){
   }
 }
 
+// ===================== 关闭浏览器前未同步提醒 =====================
+function hasAnyUnsyncedChanges(){
+  try{
+    const idx=getFileIndex();
+    return idx.some(f=> f.isNewFile || (f.version||0)!==(f.lastSyncVersion||0));
+  }catch(e){return false}
+}
+
+window.addEventListener('beforeunload', function(e){
+  if(hasAnyUnsyncedChanges()){
+    e.preventDefault();
+    e.returnValue='';
+    return '';
+  }
+});
+
 // 启动时先检查登录状态
 checkLoginState();
 </script>
