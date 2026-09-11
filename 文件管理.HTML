@@ -3513,6 +3513,10 @@ async function initSyncSheet(){
       const existingHeaders=headersResult.表头||[];
       // 表头已存在（至少有ID列）→ 不做任何操作，表头由用户手动管理
       if(existingHeaders.length>0)return;
+    }else{
+      // 获取表头失败（网络/认证异常）→ 绝不能贸然初始化，防止误覆盖表头
+      console.log('获取表头失败，跳过表头初始化:',headersResult.tongzhi||headersResult.message);
+      return;
     }
     // 表头完全不存在时才初始化（仅首次使用）
     const requiredHeaders=['拥有者','ID','文件名','内容','版本号','文件夹路径','最后上传发起时间','最后编辑时间','同步时间','MD5','内容字符数','创建日期','锁登记处','上锁时刻'];
