@@ -467,6 +467,12 @@ if(action === "初始化表头"){
   if(!headers || headers.length === 0){
     return {status:"error", tongzhi:"缺少参数: 表头(数组)"};
   }
+  // 防呆保护：表头已存在时拒绝覆盖，防止任何客户端误写导致表头错乱（需强制请传 强制:true）
+  var existingHeaders = Object.keys(getColMap());
+  var forceInit = argv["强制"] === "true" || argv["强制"] === true;
+  if(existingHeaders.length > 0 && !forceInit){
+    return {status:"error", tongzhi:"表头已存在，已拒绝覆盖(如确需重写请传 强制:true)", 现有表头: existingHeaders};
+  }
   for(var i=0;i<headers.length;i++){
     sheet.Cells(1, i+1).NumberFormatLocal = "@";
     sheet.Cells(1, i+1).Value2 = String(headers[i]);
