@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自用脑图 表头修复</title>
+<style>
+  body{font-family:"Microsoft YaHei UI",system-ui,sans-serif;background:#f5f5f5;color:#333;
+       display:flex;justify-content:center;padding:40px 16px;font-size:14px;margin:0}
+  .box{background:#fff;border:1px solid #ddd;border-radius:12px;padding:28px 32px;
+       width:100%;max-width:540px}
+  h1{font-size:18px;margin:0 0 6px}
+  p{color:#666;line-height:1.7;margin:4px 0}
+  button{margin-top:16px;padding:10px 0;width:100%;border:none;border-radius:8px;
+         background:#2d2d2d;color:#eee;font-size:14px;cursor:pointer}
+  button:disabled{opacity:.5}
+  pre{background:#f8f8f8;border:1px solid #eee;border-radius:8px;padding:12px;margin-top:14px;
+      font-size:12px;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto}
+  .ok{color:#1e8449}.bad{color:#c0392b}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>自用脑图 · 表头一键修复</h1>
+  <p>当前登录账号: <b id="user">(未检测到)</b></p>
+  <p style="font-size:12px">凭据取自本浏览器 localStorage。若显示未登录，
+     请先打开 <b>文件管理.HTML</b> 登录一次，再回到本页刷新。</p>
+  <button id="btn" disabled>修复表头（强制覆盖第1行）</button>
+  <pre id="log"></pre>
+</div>
+<script>
+  const user=localStorage.getItem('mindmap_auth_user')||'';
+  const pass=localStorage.getItem('mindmap_auth_pass')||'';
+  const userEl=document.getElementById('user');
+  userEl.textContent=user||'(未登录)';
+  userEl.style.color=user?'#2d2d2d':'#c0392b';
+  const logEl=document.getElementById('log');
+  function log(s){logEl.textContent+=s+'\n'}
+  const requiredHeaders=['拥有者','ID','文件名','内容','版本号','文件夹路径',
+    '最后上传发起时间','最后编辑时间','同步时间','MD5','内容字符数','创建日期','锁登记处','上锁时刻'];
+  const WEBHOOK='https://www.kdocs.cn/api/v3/ide/file/519302387327/script/V2-6Hg523EokclFFy9zaeym1P/sync_task';
+  const PROXY='https://1408347752-dxgsap4qrj.ap-guangzhou.tencentscf.com';
+  const btn=document.getElementById('btn');
+  if(user&&pass){btn.disabled=false}
+  btn.onclick=async function(){
+    btn.disabled=true;
+    log('开始修复: 初始化表头(强制覆盖) ...');
+    const payload={webhookUrl:WEBHOOK,message:{Context:{argv:{
+      表格名:'自用脑图',操作:'初始化表头',用户名:user,密码:pass,
+      表头:requiredHeaders,强制:true}}}};
+    const tryList=[PROXY,WEBHOOK];  // 先走代理(网页同款通道), 失败再直连
+    for(const url of tryList){
+      try{
+        log('>> 尝试: '+url);
+        const r=await fetch(url,{method:'POST',
+          headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        const d=await r.json();
+        const res=(d&&d.data&&d.data.result)||d;
+        log('<< '+((res&&res.status)||'?')+' '+(res&&res.tongzhi||''));
+        if(res&&res.status==='success'){
+          log('修复成功! 金山文档中自用脑图第1行已恢复为标准表头');
+          btn.textContent='修复成功';
+          return;
+        }
+      }catch(e){log('通道失败: '+e)}
+    }
+    log('所有通道失败。可手动在金山文档把第1行改为:\n'+requiredHeaders.join(', '));
+    btn.textContent='重试';btn.disabled=false;
+  };
+</script>
+</body>
+</html>
