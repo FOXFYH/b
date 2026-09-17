@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  思维导图网页版 · 编辑器主界面        当前版本 2.00
+  思维导图网页版 · 编辑器主界面        当前版本 2.01
   ★ 版本规则(改代码者必读): 每次修改 +0.01, 2.99 升 3.0。
     改完必须同步"三处版本号", 三处一致才算改完:
       ① 本备注的「当前版本」
@@ -8,6 +8,8 @@
       ③ 工具栏徽标(id=appVersionBadge)里的 v2.xx
     改完重新部署到 GitHub 仓库 FOXFYH/b (见 github助手 CLI)。
   版本沿革:
+    2.01 (2026-09-18) 修复宿主 ID 变魔术: 导入/复制不再为新文件强行赋新ID并搬
+      存储键(避免云端按ID重复建行); 默认文件名加秒级+随机后缀防分钟级撞同名。
     2.00 (2026-09-11) 建立网页版独立版本号体系。此前只有项目名
       "思维导图2.0", 部署到 Git 后无法判断线上是哪一版(曾因此误判
       表头破坏来源)。本版起 标题标签 与 工具栏徽标 均显示版本号。
@@ -180,7 +182,7 @@ body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;overflow:hidden;back
   <span id="versionInfo" class="version-info"></span>
   <span id="userInfo" class="user-info" style="display:none"><span class="user-name" id="displayUserName"></span><button class="logout-btn" onclick="doLogout()">登出</button></span>
   <label style="font-size:11px;color:#666;cursor:pointer;display:flex;align-items:center;gap:2px;flex-shrink:0;user-select:none;-webkit-user-select:none"><input type="checkbox" id="browseModeCb" onchange="toggleBrowseMode(this.checked)"> 浏览</label>
-  <span id="appVersionBadge" class="app-ver" title="思维导图网页版 编辑器 版本号">v2.00</span>
+  <span id="appVersionBadge" class="app-ver" title="思维导图网页版 编辑器 版本号">v2.01</span>
   <button onclick="showHelp()" title="快捷键说明" style="padding:3px 6px;border:1px solid #ccc;border-radius:3px;background:#fff;cursor:pointer;font-size:11px;font-family:inherit">❓</button>
   <input type="file" id="fileInput" accept=".txt" style="display:none" onchange="handleFile(event)">
 </div>
@@ -1810,7 +1812,9 @@ function getDefaultFileName(){
   const d=String(now.getDate()).padStart(2,'0');
   const h=String(now.getHours()).padStart(2,'0');
   const min=String(now.getMinutes()).padStart(2,'0');
-  return `新脑图${y}${m}${d}_${h}${min}.txt`;
+  const s=String(now.getSeconds()).padStart(2,'0');
+  const rand=String(Math.floor(Math.random()*1000)).padStart(3,'0');
+  return `新脑图${y}${m}${d}_${h}${min}${s}_${rand}.txt`;
 }
 
 // ============================================================
@@ -1950,14 +1954,11 @@ async function handleFile(e){
         let newName=baseName+'_导入.txt';
         let n=1;
         while(idx.find(x=>x.name===newName)){newName=baseName+'_导入'+(++n)+'.txt'}
-        const newId=genFileId();
         saveFileData(newName,content);
         const idx2=getFileIndex();
         const f=idx2.find(x=>x.name===newName);
         if(f){
-          const oldId=f.id;
-          if(oldId&&oldId!==newId){const raw=localStorage.getItem('mindmap_file_id_'+oldId);if(raw){localStorage.setItem('mindmap_file_id_'+newId,raw);localStorage.removeItem('mindmap_file_id_'+oldId)}}
-          f.id=newId;f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2);
+          f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2);
         }
         currentFileName=newName;
         root=parseText(content);selectedNode=null;
@@ -1970,14 +1971,11 @@ async function handleFile(e){
         toast('已新建：'+newName);
       }
     }else{
-      const newId=genFileId();
       saveFileData(fileName,content);
       const idx2=getFileIndex();
       const f=idx2.find(x=>x.name===fileName);
       if(f){
-        const oldId=f.id;
-        if(oldId&&oldId!==newId){const raw=localStorage.getItem('mindmap_file_id_'+oldId);if(raw){localStorage.setItem('mindmap_file_id_'+newId,raw);localStorage.removeItem('mindmap_file_id_'+oldId)}}
-        f.id=newId;f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2);
+        f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2);
       }
       currentFileName=fileName;
       root=parseText(content);selectedNode=null;
@@ -2354,22 +2352,16 @@ async function copyCurrentFile(){
   let n=1;
   while(idx.find(f=>f.name===copyName)){copyName=baseName+'_副本'+(++n)+'.txt'}
   const content=exportNodeText(root).trimEnd();
-  const copyId=genFileId();
   saveFileData(copyName,content);
   const idx2=getFileIndex();
   const f=idx2.find(x=>x.name===copyName);
   if(f){
-    const oldId=f.id;
-    if(oldId&&oldId!==copyId){
-      const raw=localStorage.getItem('mindmap_file_id_'+oldId);
-      if(raw){localStorage.setItem('mindmap_file_id_'+copyId,raw);localStorage.removeItem('mindmap_file_id_'+oldId)}
-    }
-    f.id=copyId;f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2);
+    f.version=1;f.lastSyncVersion=0;f.isNewFile=true;setFileIndex(idx2);
   }
   toast('已复制：'+copyName);
   openNamedFile(copyName);
   renderFileList();
-  postToFileManager({type:'fileCopied',fileId:copyId});
+  postToFileManager({type:'fileCopied',fileId:f&&f.id?f.id:genFileId()});
 }
 
 async function syncAllFiles(){
